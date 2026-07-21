@@ -82,6 +82,30 @@ The verb file **cannot** be named `montage.jl`: on the default macOS filesystem 
 - **Regression vs. prototype:** ran core `montage` on the dev project's 40 sims (`data/outputs/simulations/*/output/final.svg`) with `Sim N` titles → 7-col grid, scaled cleanly, no clipping, matching the prototype's known-good look. Output rendered via `rsvg-convert` and eyeballed (1400×1412 px).
 
 ### Open / next
-- Not committed yet (awaiting user approval).
-- `Project.toml` still has no `[weakdeps]`/`[extensions]` — added with the CairoMakie/PCMM slices.
-- Next verb likely `storyboard` (SVG static path first), then the CairoMakie extension for movies + `tableau`.
+- Committed (`52c27e8`) and merged to `main`. `HANDOFF.md` removed (`c7061ba`).
+- `Project.toml` still has no `[weakdeps]`/`[extensions]` — added with the movie/PCMM slices.
+
+---
+
+## Session: montage-of-movies — `record` via SVG frames + FFMPEG (2026-07-21)
+
+### Goal
+The headline feature: a `montage` whose panels are **movies**, all playing in lockstep → one `.mp4` comparing dynamics across sims. Branch `feature/montage-movie`.
+
+### The fork we resolved (with the user)
+Two ways to render movie frames; the user chose **Option A**:
+- **Option A (chosen) — SVG frames + FFMPEG, no Makie.** Each timepoint = the static montage of that timepoint's frames (reuse `_svgMontage`), rasterized (Rsvg + Cairo) and encoded (FFMPEG). Reuses shipped code, exact PhysiCell styling, lightest deps.
+- **Option B — CairoMakie `Makie.record`.** Deferred; CairoMakie earns its place later for `tableau` and true data-driven/heatmap movies, where its layout engine + colorbars matter. This feature doesn't need them.
+
+This **revises the earlier assumption** that "movies = CairoMakie extension." Movies are now split: montage-of-movies rides the SVG backend (`MontageMovieExt`); CairoMakie is a later, separate path.
+
+### Decisions
+- **`record` is a separate entry point** (not a per-verb `movie=` kwarg). Core owns `record(spec::MontageSpec, path; framerate)`; the real renderer lives in `ext/MontageMovieExt.jl` and is reached via the core hook `_recordSVGMovie` (untyped fallback in core errors until the ext loads — the ext adds a more-specific method, so no method-overwrite).
+- **`MontageSpec`** (core type): frame-sequence panels + common frame count + layout params. `montage(panels)` returns a `MontageSpec` when any panel's content is a `Vector` of frame paths; otherwise it returns the SVG string as before (additive, static API unchanged). `_svgFrame(spec, t)` builds one timepoint's montage SVG by reusing `_svgMontage`.
+- **Frame alignment: by index, truncate to shortest**, warn on unequal lengths. Time-based alignment is a logged **follow-up** (see PRD "Still open").
+- **Deps (user-approved):** `Rsvg`, `Cairo`, `FFMPEG` as `[weakdeps]`; single `[extensions]` entry `MontageMovieExt`. Core stays dependency-free.
+- **Backend fallback fix:** generalized the `:makie` fallback in `montage_verb.jl` to dispatch on the abstract `MontageBackend` (not concrete `MakieBackend`) so the future CairoMakie extension can add the concrete method without a method-overwrite warning. Same pattern used for `_recordSVGMovie`.
+
+### Testing
+- Committed core tests stay dependency-free: `MontageSpec` construction, index truncation + length-mismatch warning, `_svgFrame` output, and the `record` fallback error. **The heavy deps stay out of the core test target.**
+- End-to-end movie render (Rsvg/Cairo/FFMPEG) verified **manually** this session in a scratch env, not in the committed suite (per the "no heavy deps in core tests" rule).

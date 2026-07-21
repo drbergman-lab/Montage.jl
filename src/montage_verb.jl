@@ -12,7 +12,9 @@ across many things (e.g. the final state of every simulation in a batch, side by
 # Arguments
 - `panels`: a `Vector{Panel}`, or a loose vector of raw contents (each wrapped as an
   untitled [`Panel`](@ref)). For the `:svg` backend, a panel's content is a path to an
-  SVG file.
+  SVG file. If a panel's content is instead a **`Vector` of frame paths** (one per
+  timepoint), the panel is *animated* and `montage` returns a [`MontageSpec`](@ref) —
+  hand it to [`record`](@ref) to write a movie where every panel plays in lockstep.
 
 # Keyword Arguments
 - `backend::Symbol=:svg`: `:svg` (default, built into the core — lossless vector, static)
@@ -25,8 +27,8 @@ across many things (e.g. the final state of every simulation in a batch, side by
   the composition regardless.
 
 # Returns
-For `backend=:svg`, the composed SVG document as a `String` (and writes it to `output`
-if given).
+For static panels on `backend=:svg`, the composed SVG document as a `String` (and
+writes it to `output` if given). For animated panels, a [`MontageSpec`](@ref).
 
 # Examples
 ```julia
@@ -37,12 +39,21 @@ svg = montage([Panel("a/final.svg"; title="A"), Panel("b/final.svg"; title="B")]
 
 # Loose, untitled — no title band, no wasted white space
 montage(["a/final.svg", "b/final.svg"]; output="grid.svg")
+
+# A montage of movies: each panel is a frame sequence; play them in lockstep
+spec = montage([Panel(["a/f1.svg", "a/f2.svg"]; title="A"),
+                Panel(["b/f1.svg", "b/f2.svg"]; title="B")])
+record(spec, "compare.mp4"; framerate=15)   # requires `using Rsvg, Cairo, FFMPEG`
 ```
 """
 function montage(panels; backend::Symbol=:svg, panel_width::Real=300,
                  title_height::Real=34, pad::Real=12, output=nothing)
-    return _montage(montageBackend(backend), _asPanels(panels);
-                    panel_width, title_height, pad, output)
+    ps = _asPanels(panels)
+    if any(_isAnimated, ps)
+        # movie-able composition — return a spec for `record`
+        return _montageSpec(ps; panel_width, title_height, pad)
+    end
+    return _montage(montageBackend(backend), ps; panel_width, title_height, pad, output)
 end
 
 # --- :svg backend (core) ---
@@ -56,8 +67,9 @@ function _montage(::SVGBackend, panels::AbstractVector{Panel};
     return svg
 end
 
-# --- :makie backend (added by MontageCairoMakieExt) ---
-# Core fallback: a helpful error until the extension is loaded.
-function _montage(::MakieBackend, panels::AbstractVector{Panel}; kwargs...)
+# --- other backends (e.g. :makie, added by MontageCairoMakieExt) ---
+# Catch-all fallback on the ABSTRACT type so an extension can add a concrete
+# `_montage(::MakieBackend, …)` method without a method-overwrite warning.
+function _montage(::MontageBackend, panels::AbstractVector{Panel}; kwargs...)
     error("the :makie backend requires CairoMakie — run `using CairoMakie` to load it")
 end

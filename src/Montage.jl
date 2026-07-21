@@ -10,6 +10,10 @@ include("svg_backend.jl")
 # because macOS's case-insensitive filesystem would collide `montage.jl` with `Montage.jl`.
 include("montage_verb.jl")
 
-export Panel, montage
+# Movies: MontageSpec builder, per-frame SVG, and the `record` entry point.
+# The renderer (rasterize + encode) is added by ext/MontageMovieExt.jl.
+include("movie.jl")
+
+export Panel, MontageSpec, montage, record
 
 end

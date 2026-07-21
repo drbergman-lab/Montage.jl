@@ -63,3 +63,33 @@ Normalize a loose collection into `Vector{Panel}`. Accepts a vector of `Panel`s
 """
 _asPanels(panels::AbstractVector{Panel}) = collect(panels)
 _asPanels(items::AbstractVector) = Panel[item isa Panel ? item : Panel(item) for item in items]
+
+"""
+    _isAnimated(panel) -> Bool
+
+A panel is *animated* when its content is a sequence of per-timepoint frames (a
+`Vector`) rather than a single static image. Animated panels turn a `montage` into a
+[`MontageSpec`](@ref) that [`record`](@ref) can render as a movie.
+"""
+_isAnimated(p::Panel) = p.content isa AbstractVector
+
+"""
+    MontageSpec
+
+A movie-able composition: a uniform grid of frame-sequence `panels` (each panel's
+content is a `Vector` of per-timepoint frame paths), a common `nframes` count, and the
+grid layout parameters. Built by [`montage`](@ref) when its panels are animated, and
+consumed by [`record`](@ref).
+
+Frames are aligned by index and truncated to the shortest sequence (see `nframes`).
+"""
+struct MontageSpec
+    panels::Vector{Panel}
+    nframes::Int
+    panel_width::Float64
+    title_height::Float64
+    pad::Float64
+end
+
+Base.show(io::IO, spec::MontageSpec) =
+    print(io, "MontageSpec($(length(spec.panels)) panels × $(spec.nframes) frames)")

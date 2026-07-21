@@ -1,9 +1,20 @@
 name = "Montage"
 uuid = "b5316104-0607-4250-a2f2-009686a1a11b"
-authors = ["Daniel Bergman <danielrbergman@gmail.com> and contributors"]
 version = "0.0.1"
+authors = ["Daniel Bergman <danielrbergman@gmail.com> and contributors"]
+
+[weakdeps]
+Cairo = "159f3aea-2a34-519c-b102-8c37f9878175"
+FFMPEG = "c87230d0-a227-11e9-1b43-d7ebe4e7570a"
+Rsvg = "c4c386cf-5103-5370-be45-f3a111cca3b8"
+
+[extensions]
+MontageMovieExt = ["Rsvg", "Cairo", "FFMPEG"]
 
 [compat]
+Cairo = "1.1.1"
+FFMPEG = "0.4.5"
+Rsvg = "1.1.0"
 julia = "1.10.10"
 
 [extras]

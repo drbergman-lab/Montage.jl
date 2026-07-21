@@ -91,18 +91,24 @@
 
 ## Feature: Movies (orthogonal time axis)
 
-**One-line description:** Render any verb as an animation over a time dimension via `Makie.record`.
+**One-line description:** Render a composition as an animation over a time dimension.
 
 **Priority:** Must-have (headline feature).
 
 **Behavioral specification:**
-- `storyboard` movie = single-simulation time movie.
-- `montage` movie = every sim panel animates through time **simultaneously** → compare dynamics across sims.
-- `tableau` movie = the whole composed scene animates through time together.
-- **API:** a verb builds a composition spec; `record(spec, path; framerate=…)` animates it (driving `Makie.record`). Lives in the CairoMakie extension. No per-verb `movie=` kwarg or `_movie`/`_gif` variants.
+- `montage` movie = every sim panel animates through time **simultaneously** → compare dynamics across sims. **(In progress — the first movie feature.)**
+- `storyboard` movie = single-simulation time movie. *(later)*
+- `tableau` movie = the whole composed scene animates through time together. *(later, CairoMakie path)*
+- **API:** a verb returns a composition **spec** when its panels carry frame sequences; `record(spec, path; framerate=15)` animates it. No per-verb `movie=` kwarg or `_movie`/`_gif` variants.
+- **Two rendering paths:**
+  - **SVG-frame path (default, Option A):** for each timepoint, compose the montage SVG of that timepoint's frames via the core `_svgMontage`, rasterize (Rsvg + Cairo), and encode the PNG sequence with FFMPEG. Preserves exact PhysiCell styling; reuses the SVG backend; no CairoMakie. Lives in `ext/MontageMovieExt.jl` (weakdeps `Rsvg`, `Cairo`, `FFMPEG`). **This is the path used for the montage-of-movies feature.**
+  - **CairoMakie path (later):** `Makie.record` for `tableau` and true data-driven/heatmap movies.
+- **`MontageSpec`** (core type): a grid of frame-sequence panels + a common frame count + layout params. `montage` builds it; `_svgFrame(spec, t)` renders one timepoint's montage SVG.
+- **Frame alignment across sims:** by **frame index**, truncated to the shortest sequence, with a warning when lengths differ. Time-based alignment (nearest snapshot on a common time grid) is a **planned follow-up** — see the to-do in progress.md.
 
 **Acceptance criteria:**
-- A short movie renders for each verb and plays with all frames present at the requested framerate.
+- `record(montage(frame_panels), "out.mp4")` writes a playable video with `nframes` frames at the requested framerate, each frame the montage of that timepoint.
+- Calling `record` without the movie extension loaded errors with a message to `using Rsvg, Cairo, FFMPEG`.
 
 ---
 
@@ -130,7 +136,7 @@
 ## Decisions (resolved 2026-07-21)
 
 1. **Backend strategy:** SVG string-stitching is the **core default** (`backend=:svg`), with no heavy deps. CairoMakie lives behind an extension (`MontageCairoMakieExt`); `backend=:makie` requires `using CairoMakie` and errors helpfully otherwise. Backend is a **kwarg**, keeping the API surface slim.
-2. **Movie API surface:** a separate **`record(spec, path; framerate=…)`** entry point (in the CairoMakie extension) that animates a composition spec. No per-verb `movie=` kwarg, no `_movie`/`_gif` variants.
+2. **Movie API surface:** a separate **`record(spec, path; framerate=…)`** entry point that animates a composition spec. No per-verb `movie=` kwarg, no `_movie`/`_gif` variants. The montage-of-movies uses the **SVG-frame + FFMPEG path** (Option A, resolved 2026-07-21) in `ext/MontageMovieExt.jl`; CairoMakie is reserved for later `tableau`/data-driven movies.
 3. **Core input contract:** a typed **`Panel`/`Layout` spec** (not bare tuples). A `Panel` carries its title and content (an image path for the SVG path, or a plotting callback + data for the Makie path).
 4. **v1 scope:** land **`montage` first** — port the SVG-path prototype and regression-test it against the known-good 34-sim grid — then add `storyboard`, `tableau`, and movies incrementally.
 
@@ -138,3 +144,4 @@
 
 - **`tableau` layout spec:** how to declare focal vs. satellite panels and where each substrate heatmap goes (auto-ring around center? explicit positions?). Decide when building `tableau`.
 - **Default output location** and the non-overwrite naming scheme (keep the prototype's ` copy (n).svg` scheme, or switch to explicit-only / timestamp). Decide when building `montage`.
+- **Time-based frame alignment (follow-up to montage-movies):** v1 aligns frames by index and truncates to the shortest sequence. Add an option to align by *simulation time* — build a common time grid and select each sim's nearest snapshot, holding the last frame for sims that ended earlier — so sims with different cadences/durations compare correctly.

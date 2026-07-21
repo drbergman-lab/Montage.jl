@@ -30,21 +30,25 @@ Montage gives you three verbs for the three distinct things you might want a com
 ```julia
 using Montage
 
-# Generic core — you supply panels (titles + images, or plotting callbacks + data)
-montage(panels; output="grid.svg")
+# Static montage: one panel per thing, uniform titled grid
+montage([Panel("a/final.svg"; title="A"), Panel("b/final.svg"; title="B")]; output="grid.svg")
+
+# Montage of movies: give each panel a frame sequence, then record them playing in lockstep
+using Rsvg, Cairo, FFMPEG                              # unlocks the movie extension
+spec = montage([Panel(framesA; title="A"), Panel(framesB; title="B")])   # -> MontageSpec
+record(spec, "compare.mp4"; framerate=15)
 ```
 
-With [PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelManager.jl) loaded, a package **extension** adds convenience methods that resolve simulation ids to files/data for you:
+With [PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelManager.jl) loaded, a package **extension** will add convenience methods that resolve simulation ids to files/data for you (planned):
 
 ```julia
 using PhysiCellModelManager, Montage
 
 montage(Simulation)                                   # final state of every simulation, gridded
-storyboard(Simulation, 32; movie="sim32.mp4", framerate=15)
-tableau(Simulation, 32; time=:final)                  # cells centered, substrate heatmaps around
+record(montage(Simulation, [1, 2, 22, 32]), "compare.mp4")   # their movies, side by side
 ```
 
-The core never depends on PhysiCellModelManager — install and use Montage on generic image/data inputs without it; the PCMM methods appear automatically when PCMM is present.
+The core never depends on PhysiCellModelManager or CairoMakie — install and use Montage on generic image inputs without them; the movie extension activates once `Rsvg`, `Cairo`, and `FFMPEG` are loaded, and the PCMM methods will appear when PCMM is present.
 
 ## Installation
 
@@ -63,14 +67,16 @@ Pkg.add(url="https://github.com/drbergman-lab/Montage.jl")
 - [x] SVG string-stitch backend — nested-`<svg>` `viewBox` scaling, parsed (not hardcoded) intrinsic dims, uniform grid from max aspect ratio; ported from the prototype
 - [x] `montage` (core) — uniform titled grid on the `:svg` backend; `backend`/`panel_width`/`title_height`/`pad`/`output` kwargs; title band reserved only if any panel is titled; `:makie` errors until CairoMakie is loaded
 - [x] `montage` regression — verified against the prototype on the dev project (7-col grid of 40 titled sims, scaled cleanly, no clipping)
-- [x] Core test suite — SVG-backend verbs on hand-written SVGs; no PCMM, no CairoMakie
+- [x] `MontageSpec` + `record` — animated panels (frame-sequence content) make `montage` return a spec; frames aligned by index, truncated to shortest
+- [x] Movie extension (`MontageMovieExt`, weakdeps `Rsvg`/`Cairo`/`FFMPEG`) — montage-of-movies via SVG-frame + FFMPEG; verified end-to-end on 4 real sims (2×2 grid, 25 frames, panels evolving in lockstep with PhysiCell styling)
+- [x] Core test suite — SVG-backend verbs + movie spec on hand-written SVGs; no heavy deps
 
 ### Planned
 
-- [ ] `Project.toml` deps + `[weakdeps]`/`[extensions]` wiring (CairoMakie stack; PCMM weakdep) and `ext/` directory
 - [ ] `storyboard` (core) — ordered frame sequence, static and movie
 - [ ] `tableau` (core) — focal + satellite scene via CairoMakie `GridLayout` with colorbars
-- [ ] Movies — `record(spec, path)`, `Makie.record`-driven animation for all three verbs
+- [ ] CairoMakie extension — `:makie` backend + `tableau` + data-driven/heatmap movies (`Makie.record`)
 - [ ] PCMM extension — `::Type{Simulation}` convenience methods (`montage`/`storyboard`/`tableau`)
+- [ ] Time-based frame alignment — align movie frames by simulation time (nearest snapshot on a common grid), not just index (see [PRD.md](PRD.md))
 
 Several **open design decisions** gate this work — see [PRD.md](PRD.md#open-decisions-to-confirm-with-the-user-before-substantial-implementation).

@@ -98,4 +98,37 @@ end
         @test_throws ErrorException montage(Panel[])                     # empty
     end
 
+    @testset "montage movie spec" begin
+        withtmpsvgs(SVG_SQUARE, SVG_TALL, SVG_SQUARE, SVG_TALL) do paths
+            # two animated panels, 2 frames each -> a MontageSpec, not an SVG string
+            spec = montage([Panel([paths[1], paths[2]]; title="A"),
+                            Panel([paths[3], paths[4]]; title="B")])
+            @test spec isa MontageSpec
+            @test spec.nframes == 2
+            @test length(spec.panels) == 2
+            # per-frame SVG reuses the static stitcher: root + one child per panel
+            f1 = Montage._svgFrame(spec, 1)
+            @test occursin(">A<", f1) && occursin(">B<", f1)
+            @test count("<svg", f1) == 3
+            @test_throws BoundsError Montage._svgFrame(spec, 3)
+            # record without the movie extension loaded -> helpful error
+            @test_throws ErrorException record(spec, joinpath(mktempdir(), "x.mp4"))
+        end
+    end
+
+    @testset "montage movie — index truncation + warning" begin
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            local spec
+            @test_logs (:warn,) match_mode=:any begin
+                spec = montage([Panel([paths[1], paths[2]]),   # 2 frames
+                                Panel([paths[3]])])            # 1 frame
+            end
+            @test spec.nframes == 1                             # truncated to shortest
+        end
+        # all panels must be animated for a movie spec
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE) do paths
+            @test montage([Panel(paths[1]), Panel(paths[2])]) isa String   # both static -> SVG
+        end
+    end
+
 end
