@@ -38,12 +38,25 @@ PCMM is an optional, weak dependency reached only through the extension. PCMM us
 All work must remain strictly inside this repository folder (`~/.julia/dev/Montage/`). Do **not** edit files outside this repo. The prototype at `/Users/dbergman1/Research/GeorgetownR01/scripts/StitchFinalSVGs.jl` and PCMM's source are **read-only references**.
 
 ## Git Workflow
-Claude Code runs directly on the machine and can run any git operation. **However: never make a commit (or push) without first prompting the user and getting an explicit yes.** Provide the ready-to-run command and let the user confirm.
+Claude Code runs directly on the machine and can run any git operation. The boundaries below keep `main` and anything outward-facing under explicit human control while removing friction from local, reversible work.
 
-### Branching Rules
-- Never modify `main` directly for feature work.
-- Default base branch is `main` unless specified otherwise.
-- Branch names: `feature/<short-desc>`.
+**Pre-authorized (no prompt needed):**
+- Create and switch feature branches when starting work (`git branch` / `git checkout`). Branch from `main` unless told otherwise; name `feature/<short-desc>`.
+- Read-only inspection (`git status`/`diff`/`log`/`show`).
+- Delete a feature branch once it has been merged into `main` (do this automatically right after a merge).
+
+**Commit procedure (the gate is *diff review*, not a command confirmation):**
+1. When a change is ready, present it for review — a `git diff` and/or a short summary of what changed.
+2. Wait for the user to confirm they've reviewed it.
+3. Once reviewed, **write the commit message and commit directly** — no need to print a ready-to-run command and wait for a second yes. End messages with the `Co-Authored-By: Claude Opus 4.8` trailer.
+- Never commit before the user has reviewed the diff.
+
+**Requires explicit request:**
+- **Merging to `main`** — only when the user explicitly asks. `main` is the integration gate. Prefer `--ff-only`. After merging, delete the merged feature branch.
+
+**Never:**
+- Modify `main` directly for feature work — branch instead.
+- Push or publish without an explicit yes (outward-facing).
 
 ## Naming Conventions
 Consistent with ModelManager.jl / the PhysiCell ecosystem:
@@ -56,10 +69,10 @@ Consistent with ModelManager.jl / the PhysiCell ecosystem:
 ## Required Workflow for Any Change
 1. Produce a **design brief** in the assistant response **before any code changes**; wait for human approval.
 2. On approval: update [PRD.md](PRD.md) with the new/changed feature, and open a new [progress.md](progress.md) entry to log the design process, decisions, and open questions.
-3. Create the feature branch (`git branch feature/<desc>`) and implement there.
+3. Create the feature branch (`git branch feature/<desc>`; pre-authorized) and implement there.
 4. Update the [README.md](README.md) Implementation Status when a feature is complete.
 5. Trim PRD.md and progress.md to reflect the final implementation.
-6. When done, output the ready-to-run commit command and **wait for the user to approve before committing**.
+6. When done, present the diff for review; once the user has reviewed it, write the commit message and commit (see **Git Workflow** for the full procedure). Merge to `main` only on explicit request.
 
 **Design brief template:**
 ```
