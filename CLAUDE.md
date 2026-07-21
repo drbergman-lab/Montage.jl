@@ -11,7 +11,7 @@ Assistant professor working on computational modeling of cancer-immune interacti
 | [PRD.md](PRD.md) | Behavioral specification for every feature — acceptance criteria and edge cases |
 | [progress.md](progress.md) | Session journal: decisions made, approaches rejected, open questions |
 
-Start any feature session by reading the relevant PRD entry and the Implementation Status section of `README.md`. `HANDOFF.md` (uncommitted, at the repo root) is the original design brief that seeded this package — read it once for background; PRD.md/progress.md supersede it as the living record.
+Start any feature session by reading the relevant PRD entry and the Implementation Status section of `README.md`. (The package was seeded from an original design brief, `HANDOFF.md`, now removed — PRD.md/progress.md are the living record.)
 
 ## Project Overview
 Montage.jl composes PhysiCell visualizations into intentionally-structured composite figures — and into **movies**. It provides three composition verbs:
