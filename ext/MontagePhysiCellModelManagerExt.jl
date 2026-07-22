@@ -57,7 +57,13 @@ _defaultOutput(index) =
             output=<auto: montage.svg | montage.mp4>, overwrite=false, framerate=15)
 
 Compose a montage from PhysiCell simulations (PCMM extension). Pass the simulation ids
-explicitly — e.g. `montage(Simulation, simulationIDs())` to include every simulation.
+explicitly — e.g. `montage(Simulation, simulationIDs())` to include every simulation. A
+single `Integer` id also works (a one-panel montage) — handy as `montage(Simulation, id;
+index=:all)` for a single-simulation movie.
+
+For convenience you can also pass PCMM objects directly, and their constituent simulations
+are used: a trial (`Simulation`/`Monad`/`Sampling`/`Trial`), a run output (`PCMMOutput`), or
+a vector of either — e.g. `montage(out)` or `montage([monad1, monad2]; index=:all)`.
 
 The `index` value decides still image vs. movie, extending PCMM's `PhysiCellSnapshot`
 `index`:
@@ -116,5 +122,106 @@ function Montage.montage(::Type{Simulation}, sim_ids;
     # core `montage` picks still vs. movie from the panel content and handles output + guard
     return montage(panels; panel_width, title_height, pad, output, overwrite, framerate)
 end
+
+# A single simulation id → a one-panel montage (mainly useful as `index=:all` for a
+# single-simulation movie, since `storyboard` is static).
+Montage.montage(::Type{Simulation}, sim_id::Integer; kwargs...) =
+    montage(Simulation, [sim_id]; kwargs...)
+
+# Accept trial objects and run outputs directly — resolve them to their constituent
+# simulation ids and forward. A `Simulation`/`Monad`/`Sampling`/`Trial` (all `AbstractTrial`),
+# a `PCMMOutput`, or a vector of either.
+Montage.montage(trial::AbstractTrial; kwargs...) =
+    montage(Simulation, simulationIDs(trial); kwargs...)
+Montage.montage(trials::AbstractVector{<:AbstractTrial}; kwargs...) =
+    montage(Simulation, simulationIDs(trials); kwargs...)
+Montage.montage(out::PCMMOutput; kwargs...) =
+    montage(Simulation, simulationIDs(out); kwargs...)
+Montage.montage(outs::AbstractVector{<:PCMMOutput}; kwargs...) =
+    montage(Simulation, reduce(vcat, simulationIDs.(outs); init=Int[]); kwargs...)
+
+# --- storyboard --------------------------------------------------------------------------
+
+# n evenly-spaced snapshot indices (from those actually present), spanning the run — so
+# n=4 gives initial, two middles, and final. Returns all if the run has ≤ n snapshots.
+function _evenSnapshots(sim_id::Integer, n::Integer)
+    n >= 1 || error("n_snapshots must be ≥ 1; got $n")
+    dir = _outputFolder(sim_id)
+    files = sort!(filter(f -> occursin(r"^snapshot\d+\.svg$", f), readdir(dir)))
+    isempty(files) && error("simulation $sim_id has no snapshot SVGs in $dir")
+    idxs = [parse(Int, match(r"\d+", f).match) for f in files]
+    n >= length(idxs) && return idxs
+    return idxs[round.(Int, range(1, length(idxs); length=n))]
+end
+
+# Snapshot time (from output metadata), or `missing` if the snapshot can't be read.
+function _snapshotTime(sim_id::Integer, sel)
+    snap = PhysiCellSnapshot(sim_id, sel)
+    return snap === missing ? missing : snap.time
+end
+
+_selectorLabel(sel::Symbol) = string(sel)
+_selectorLabel(sel::Integer) = "snapshot $sel"
+
+"""
+    storyboard(::Type{Simulation}, sim_id; index=nothing, n_snapshots=…, title=(t -> "t = \$t"),
+               ncols=nothing, panel_width=300, title_height=34, pad=12,
+               output=joinpath(dataDir(), "outputs", "storyboard.svg"), overwrite=false)
+
+Stitch **one** simulation's time evolution into a static filmstrip (PCMM extension), each
+frame titled with its timestamp. `sim_id` is an `Integer`; you can also pass the simulation
+object (`storyboard(sim)`) or a single-simulation run output (`storyboard(out)` where
+`out isa PCMMOutput{Simulation}`).
+
+Choose the timepoints one of two ways:
+
+- **`index`** — a vector of snapshot selectors, each an `Integer` snapshot index or
+  `:initial`/`:final` (matching PCMM's `PhysiCellSnapshot`), e.g. `[:initial, 30, 60, :final]`.
+- **`n_snapshots`** (default 4) — pick that many evenly-spaced snapshots spanning the run,
+  including the endpoints (initial, middles, final).
+
+Pass **one** of them: `n_snapshots` defaults to `length(index)` when `index` is given (so
+you never write `n_snapshots=nothing`); passing both with different lengths errors.
+
+Titles come from each frame's simulation time via `title` (default `t -> "t = \$t"`, `t`
+the PhysiCell `current_time`). `output` defaults under `dataDir()/outputs`, errors if it
+exists unless `overwrite=true`, and `output=nothing` returns the SVG string. `ncols`
+defaults to a single row.
+
+# Examples
+```julia
+using PhysiCellModelManager, Montage
+
+storyboard(Simulation, 1)                                  # 4 evenly-spaced frames
+storyboard(Simulation, 1; n_snapshots=6)                   # 6 frames
+storyboard(Simulation, 1; index=[:initial, 30, 60, :final])
+storyboard(Simulation, 1; title=t -> "\$(round(t/1440; digits=1)) d")   # custom timestamp
+```
+"""
+function Montage.storyboard(::Type{Simulation}, sim_id::Integer;
+                            index=nothing,
+                            n_snapshots::Integer = isnothing(index) ? 4 : length(index),
+                            title = t -> "t = $t",
+                            ncols::Union{Nothing,Integer}=nothing,
+                            panel_width::Real=300, title_height::Real=34, pad::Real=12,
+                            output::Union{Nothing,AbstractString}=joinpath(dataDir(), "outputs", "storyboard.svg"),
+                            overwrite::Bool=false)
+    isnothing(index) || n_snapshots == length(index) ||
+        error("pass either `index` (a vector of timepoints) or `n_snapshots`, not both with different lengths (got n_snapshots=$n_snapshots, length(index)=$(length(index)))")
+    selectors = isnothing(index) ? _evenSnapshots(sim_id, n_snapshots) : collect(index)
+    dir = _outputFolder(sim_id)
+    panels = map(selectors) do sel
+        svg = joinpath(dir, _stateFile(sel))
+        isfile(svg) || error("simulation $sim_id: no $(basename(svg)) (index $(repr(sel)))")
+        t = _snapshotTime(sim_id, sel)
+        Panel(svg; title = t === missing ? _selectorLabel(sel) : string(title(t)))
+    end
+    return storyboard(panels; ncols=something(ncols, length(panels)),
+                      panel_width, title_height, pad, output, overwrite)
+end
+
+# Accept a single simulation directly, as an object or a single-simulation run output.
+Montage.storyboard(sim::Simulation; kwargs...) = storyboard(Simulation, sim.id; kwargs...)
+Montage.storyboard(out::PCMMOutput{Simulation}; kwargs...) = storyboard(Simulation, out.trial.id; kwargs...)
 
 end # module

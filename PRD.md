@@ -56,19 +56,25 @@
 
 ---
 
-## Feature: `storyboard` (core)
+## Feature: `storyboard` (core) — **implemented (SVG backend), 2026-07-22**
 
-**One-line description:** Arrange an ordered time sequence of frames from one subject.
+**One-line description:** Arrange an ordered time sequence of frames from one subject into a static filmstrip.
 
-**Priority:** Must-have (v1 or fast-follow — see open decision 6).
+**Priority:** Must-have.
 
-**Behavioral specification:**
-- Panels are an **ordered** sequence (frames of one simulation over time); reading order is temporal.
-- Static output = frames laid out in a grid (a `montage`-like uniform grid, but ordered).
-- Movie output = play the frames in order → a single-simulation movie.
+**Scope decision:** `storyboard` is **static only** — a filmstrip for a poster/paper. Movies are `montage`'s and (later) `tableau`'s job, so storyboard deliberately has no movie path.
+
+**Behavioral specification (core):**
+- `storyboard(panels; backend=:svg, ncols=length(panels), panel_width=300, title_height=34, pad=12, output="storyboard.svg", overwrite=false)`.
+- Panels are an **ordered** sequence; laid out row-major, defaulting to a **single row** (`ncols = n`). `ncols` wraps into a grid while preserving time order.
+- Each panel's title is exposed (where timestamps go). Frame-sequence (animated) panels are rejected — storyboard is static.
+- Shares the `_svgGrid(panels; ncols, …)` builder with `montage`. Writes by default (`storyboard.svg`), `output=nothing` returns the string, same overwrite guard.
+
+**PCMM extension** (`storyboard(::Type{Simulation}, sim_id; …)`): operates on **one** simulation. Timepoints via `index` (a vector of `Integer` snapshot indices and/or `:initial`/`:final`) **or** `n_snapshots` (default 4: evenly-spaced spanning the run, including endpoints). `n_snapshots` defaults to `length(index)` when `index` is given; passing both with different lengths errors. Frame titles are the snapshots' simulation times via a `title` function (default `t -> "t = $t"`). Writes under `dataDir()/outputs/storyboard.svg` by default.
 
 **Acceptance criteria:**
-- `storyboard(Simulation, sim_id; movie="out.mp4", framerate=15)` produces an mp4 that plays with all frames in time order.
+- `storyboard(Simulation, sim_id)` writes a single-row filmstrip of 4 evenly-spaced, timestamp-titled frames. ✓ verified on the dev project.
+- Core works with no PCMM, given hand-written ordered panels.
 
 ---
 
@@ -97,7 +103,7 @@
 
 **Behavioral specification:**
 - `montage` movie = every sim panel animates through time **simultaneously** → compare dynamics across sims. **(In progress — the first movie feature.)**
-- `storyboard` movie = single-simulation time movie. *(later)*
+- `storyboard` is **static only** (a filmstrip) — for a single-simulation *movie*, animate one simulation's frames with `montage` (a scalar id is accepted: `montage(Simulation, id; index=:all)`).
 - `tableau` movie = the whole composed scene animates through time together. *(later, CairoMakie path)*
 - **API:** the **panel content decides still vs. movie** — if any panel's content is a frame sequence, `montage` renders a movie **in one call** (writing `.mp4`), auto-picking the output extension. `output=nothing` returns a [`MontageSpec`](@ref) instead, which `record(spec, path; framerate, scale, overwrite)` animates (the underlying renderer + an escape hatch for finer control). No per-verb `movie=` kwarg or `_movie`/`_gif` variants.
 - **Two rendering paths:**
@@ -118,15 +124,19 @@
 
 **Priority:** Must-have (this is how the tool is actually used in practice).
 
-**Status:** `montage(::Type{Simulation}, …)` **implemented (2026-07-21)**. `storyboard`/`tableau` methods pending those verbs.
+**Status:** `montage(::Type{Simulation}, …)` **implemented (2026-07-21)** and `storyboard(::Type{Simulation}, sim_id; …)` **implemented (2026-07-22)**. `tableau` method pending that verb.
 
 **Behavioral specification:**
 - Ships as `ext/MontagePhysiCellModelManagerExt.jl`, wired via `[weakdeps]` + `[extensions]` in `Project.toml`. Triggered by **PhysiCellModelManager** (the added knowledge is the PhysiCell output-file convention), though `Simulation`/`simulationIDs`/`trialFolder`/`dataDir` are ModelManager's, re-exported by PCMM.
 - `montage(::Type{Simulation}, sim_ids; index=:final, title=(id->"Sim $id"), panel_width=300, title_height=34, pad=12, output::Union{Nothing,AbstractString}=<auto>, overwrite=false, framerate=15)`. `sim_ids` is required — `simulationIDs()` covers "all sims" explicitly; there is no all-sims default. The **`index` value decides still image vs. movie** (one opinionated call that produces output; no separate `frames` kwarg).
   - **Still image** (`index` is `:final`/`:initial`, or an Integer): one panel per sim selected the same way as PCMM's `PhysiCellSnapshot` — a Symbol names the state SVG, an Integer selects that indexed snapshot (`snapshotNNNNNNNN.svg`). Missing files skipped with a warning. Writes an SVG.
   - **Movie** (`index` is `:all` or a vector/range of snapshot indices): each panel plays that sim's snapshot sequence (index-aligned, truncated to shortest); rendered via `record` (requires the movie extension).
-  - **Output:** `output` defaults to `dataDir()/outputs/montage.svg` (still) or `…/montage.mp4` (movie), erroring if it exists unless `overwrite=true`. For a still image, `output=nothing` returns the SVG string instead of writing; a movie always needs a path (`nothing` errors). `framerate` applies to movies.
-- File resolution uses `trialFolder(Simulation, id)/output/` (`final.svg`, `initial.svg`, `snapshot00000000.svg …`). Data-driven primitives (`PhysiCellSnapshot`/`PhysiCellSequence` + `substrates`/`cells` DataFrames) are reserved for the future `tableau`/data-movie path.
+  - **Output:** `output` defaults to `dataDir()/outputs/montage.svg` (still) or `…/montage.mp4` (movie), erroring if it exists unless `overwrite=true`. `output=nothing` returns the in-memory result — the SVG string (still) or a `MontageSpec` (movie). `framerate` applies to movies.
+- `storyboard(::Type{Simulation}, sim_id; index=nothing, n_snapshots, title=(t->"t = $t"), ncols, panel_width, title_height, pad, output=<dataDir()/outputs/storyboard.svg>, overwrite=false)` — one simulation's time filmstrip; see the `storyboard` feature above for `index`/`n_snapshots` semantics and timestamp titles.
+- **Convenience input overloads** (resolve to constituent simulations, then forward):
+  - `montage` accepts a scalar `Integer` id, a trial (`::AbstractTrial` — `Simulation`/`Monad`/`Sampling`/`Trial`), a `::PCMMOutput`, or a vector of either (`AbstractVector{<:AbstractTrial}` / `AbstractVector{<:PCMMOutput}`) — via `simulationIDs`.
+  - `storyboard` (single-sim) accepts a `::Simulation` object or a `::PCMMOutput{Simulation}` (single-simulation run output).
+- File resolution uses `trialFolder(Simulation, id)/output/` (`final.svg`, `initial.svg`, `snapshot00000000.svg …`); snapshot **times** come from `PhysiCellSnapshot(sim_id, index).time` (metadata only). Full data-driven primitives (`substrates`/`cells` DataFrames) are reserved for the future `tableau`/data-movie path.
 - Core owns the generic verbs; the extension only **adds methods**.
 
 **Acceptance criteria:**

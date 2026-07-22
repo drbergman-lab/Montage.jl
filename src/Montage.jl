@@ -14,6 +14,9 @@ include("montage_verb.jl")
 # The renderer (rasterize + encode) is added by ext/MontageMovieExt.jl.
 include("movie.jl")
 
-export Panel, MontageSpec, montage, record
+# storyboard: one subject's time evolution as a static ordered strip.
+include("storyboard.jl")
+
+export Panel, MontageSpec, montage, storyboard, record
 
 end

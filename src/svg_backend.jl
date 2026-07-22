@@ -41,18 +41,21 @@ function _nestedSVG(svg_text::AbstractString, x, y, w, h)
 end
 
 """
-    _svgMontage(panels; panel_width, title_height, pad) -> String
+    _svgGrid(panels; ncols, panel_width, title_height, pad) -> String
 
-Build a uniform titled grid of `panels` and return the composed SVG as a string.
-Grid geometry follows the prototype: `ncols = ceil(sqrt(n))`, row-major, uniform
-cells sized from the *largest* intrinsic aspect ratio so nothing overflows or clips.
+Build a uniform titled grid of `panels` (row-major) and return the composed SVG as a
+string. `ncols` sets the number of columns — `montage` uses `ceil(sqrt(n))` (the default),
+`storyboard` uses `n` (a single ordered row). Cells are uniform, sized from the *largest*
+intrinsic aspect ratio so nothing overflows or clips.
 
 The title band is reserved for the whole grid only if at least one panel is titled;
 an all-untitled composition reserves no band (no wasted vertical space).
 """
-function _svgMontage(panels::AbstractVector{Panel};
-                     panel_width::Real=300, title_height::Real=34, pad::Real=12)
-    isempty(panels) && error("montage requires at least one panel")
+function _svgGrid(panels::AbstractVector{Panel};
+                  ncols::Integer=ceil(Int, sqrt(length(panels))),
+                  panel_width::Real=300, title_height::Real=34, pad::Real=12)
+    isempty(panels) && error("a composition requires at least one panel")
+    ncols >= 1 || error("ncols must be ≥ 1; got $ncols")
 
     # read each panel's SVG once; keep text alongside intrinsic dims
     contents = map(panels) do p
@@ -64,7 +67,6 @@ function _svgMontage(panels::AbstractVector{Panel};
     end
 
     n = length(panels)
-    ncols = ceil(Int, sqrt(n))
     nrows = ceil(Int, n / ncols)
 
     band = any(!isempty(p.title) for p in panels) ? Float64(title_height) : 0.0

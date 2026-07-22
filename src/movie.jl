@@ -34,8 +34,8 @@ and stitching them with the same grid logic as the static [`montage`](@ref).
 function _svgFrame(spec::MontageSpec, t::Integer)
     1 <= t <= spec.nframes || throw(BoundsError(spec, t))
     frame = [Panel(p.content[t], p.title) for p in spec.panels]
-    return _svgMontage(frame; panel_width=spec.panel_width,
-                       title_height=spec.title_height, pad=spec.pad)
+    return _svgGrid(frame; panel_width=spec.panel_width,
+                    title_height=spec.title_height, pad=spec.pad)
 end
 
 """

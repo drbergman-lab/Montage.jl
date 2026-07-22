@@ -148,4 +148,35 @@ end
         end
     end
 
+    @testset "storyboard — ordered single-row strip" begin
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            svg = storyboard([Panel(paths[1]; title="t0"), Panel(paths[2]; title="t1"),
+                              Panel(paths[3]; title="t2")]; output=nothing)
+            @test count("<svg", svg) == 4                       # root + 3 panels
+            # titles appear in time order (reading order preserved)
+            @test first(findfirst("t0", svg)) < first(findfirst("t1", svg)) < first(findfirst("t2", svg))
+            # single row (ncols=3), titled band 34: total_w=3*300+4*12=948, total_h=334+24=358
+            @test occursin("width=\"948.0\"", svg) && occursin("height=\"358.0\"", svg)
+        end
+    end
+
+    @testset "storyboard — ncols wraps; animated rejected" begin
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            svg = storyboard(paths; ncols=2, output=nothing)    # 4 untitled -> 2×2, no band
+            @test occursin("width=\"636.0\"", svg) && occursin("height=\"636.0\"", svg)
+            # a frame-sequence panel is rejected (storyboard is static)
+            @test_throws ErrorException storyboard([Panel([paths[1], paths[2]])]; output=nothing)
+        end
+    end
+
+    @testset "storyboard — writes by default + guard" begin
+        withtmpsvgs(SVG_SQUARE) do paths
+            cd(mktempdir()) do
+                storyboard(paths)
+                @test isfile("storyboard.svg")
+                @test_throws ErrorException storyboard(paths)   # overwrite guard
+            end
+        end
+    end
+
 end

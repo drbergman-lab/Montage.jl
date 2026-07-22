@@ -20,10 +20,10 @@ Montage gives you three verbs for the three distinct things you might want a com
 | `tableau` | show how **heterogeneous parts of one state relate** spatially | focal panel + satellite panels |
 
 - **`montage`** — e.g. the final state of every simulation in a batch, side by side.
-- **`storyboard`** — e.g. one simulation's time course as an ordered strip, or as a movie.
+- **`storyboard`** — e.g. one simulation's time course as an ordered, timestamp-titled strip (a static filmstrip for a poster or paper).
 - **`tableau`** — e.g. one simulation at one time: the cell layer centered, each substrate's heatmap (with colorbar) arranged around it, all sharing a spatial extent.
 
-**Movies** (a headline feature) are the animated form of any verb: a `storyboard` movie plays one simulation over time; a `montage` movie animates every panel through time simultaneously to compare dynamics across simulations; a `tableau` movie animates the whole composed scene together.
+**Movies** (a headline feature): a `montage` movie animates every panel through time simultaneously — compare dynamics across simulations, or play one simulation's own frames; a `tableau` movie animates the whole composed scene together. (`storyboard` is deliberately static — the still filmstrip.)
 
 ## Intended usage (subject to change — see [open decisions](PRD.md#open-decisions-to-confirm-with-the-user-before-substantial-implementation))
 
@@ -43,9 +43,13 @@ With [PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelM
 ```julia
 using PhysiCellModelManager, Montage
 
-# `index` decides still image vs. movie
+# montage: compare across sims. `index` decides still image vs. movie
 montage(Simulation, simulationIDs())                              # final state of every sim, gridded + written
 montage(Simulation, [1, 2, 3]; index=:initial, output=nothing)   # initial states, returned as a string
+
+# storyboard: one sim's time evolution as a static filmstrip with timestamp titles
+storyboard(Simulation, 32)                                       # 4 evenly-spaced frames
+storyboard(Simulation, 32; index=[:initial, 30, 60, :final])     # explicit timepoints
 
 using Rsvg, Cairo, FFMPEG                                         # movie extension
 montage(Simulation, [1, 2, 22, 32]; index=:all, output="compare.mp4", framerate=15)  # their movies, in lockstep
@@ -72,13 +76,13 @@ Pkg.add(url="https://github.com/drbergman-lab/Montage.jl")
 - [x] `montage` regression — verified against the prototype on the dev project (7-col grid of 40 titled sims, scaled cleanly, no clipping)
 - [x] One-call movies — a panel whose content is a frame sequence makes `montage` render a movie directly (writing `.mp4`); `output=nothing` returns a `MontageSpec` for `record` to animate. Frames aligned by index, truncated to shortest
 - [x] Movie extension (`MontageMovieExt`, weakdeps `Rsvg`/`Cairo`/`FFMPEG`) — montage-of-movies via SVG-frame + FFMPEG; verified end-to-end on 4 real sims (2×2 grid, 25 frames, panels evolving in lockstep with PhysiCell styling)
-- [x] Core test suite — SVG-backend verbs + movie spec on hand-written SVGs; no heavy deps
-- [x] PCMM extension (`MontagePhysiCellModelManagerExt`, weakdep `PhysiCellModelManager`) — `montage(::Type{Simulation}, ids)`: static final/initial-state grids (writes by default, `overwrite` guard) and `frames=`-driven movie specs; verified end-to-end on the dev project
+- [x] `storyboard` (core) — ordered static filmstrip, single-row default with `ncols` wrap; shares the `_svgGrid` builder with `montage`; rejects animated panels (static only)
+- [x] PCMM extension (`MontagePhysiCellModelManagerExt`, weakdep `PhysiCellModelManager`) — `montage(::Type{Simulation}, ids)` (`index` picks still-grid vs. movie) and `storyboard(::Type{Simulation}, sim_id)` (`index` vector or `n_snapshots`; timestamp titles); writes by default with `overwrite` guard; also accepts trial objects / `PCMMOutput`s / vectors directly (resolved to their sims); verified end-to-end on the dev project
+- [x] Core test suite — SVG-backend verbs (montage, storyboard) + movie spec on hand-written SVGs; no heavy deps
 
 ### Planned
 
-- [ ] `storyboard` (core) — ordered frame sequence, static and movie
 - [ ] `tableau` (core) — focal + satellite scene via CairoMakie `GridLayout` with colorbars
 - [ ] CairoMakie extension — `:makie` backend + `tableau` + data-driven/heatmap movies (`Makie.record`)
-- [ ] PCMM `storyboard`/`tableau` methods — added when those verbs land
+- [ ] PCMM `tableau` method — added when that verb lands
 - [ ] Time-based frame alignment — align movie frames by simulation time (nearest snapshot on a common grid), not just index (see [PRD.md](PRD.md))

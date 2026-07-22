@@ -156,3 +156,67 @@ Resolution:
 - The extension method's **docstring stays in Montage** (technical necessity — Documenter/`?` pull it from where the method is defined) and belongs under a clearly-labeled "PhysiCellModelManager extension" heading in Montage's API reference. Reference ≠ tutorial.
 - Montage's user docs stay **generic-first**; PCMM is a short "if you use PCMM…" pointer. Per user's call (2026-07-21), the **fuller worked example in the README is kept for now** and will be slimmed to a pointer only once PCMM has its own page.
 - The real how-to — a **"Visualizing simulations with Montage"** page (tutorial for `montage(Simulation)` / `record`, linking back to Montage's API reference) — **belongs in PCMM's docs**. We can't author it from here (PCMM is a read-only boundary / separate repo), so it's a cross-repo follow-up for a PCMM session (see the handoff to-do in CLAUDE.md).
+
+---
+
+## Session: `storyboard` — static filmstrip (2026-07-22)
+
+Branch `feature/storyboard`. The third verb, static-only.
+
+### Scope decision (user)
+`storyboard` is **static only** — a filmstrip for a poster/paper. `montage` already does
+movies (montage-of-movies), and `tableau` will do sophisticated ones; a single-simulation
+movie is just `montage(Simulation, [id]; index=:all)`. So storyboard has **no movie path**.
+
+### What was built
+- **`_svgMontage` → `_svgGrid(panels; ncols=ceil√n, …)`** (rename + add `ncols`). Now shared
+  by `montage` (ncols = ceil√n), the movie `_svgFrame` (ncols = ceil√n), and `storyboard`
+  (ncols = n → single row). Also extracted `_writeSVG(svg, output, overwrite)` (dispatch on
+  `::Nothing`/`::AbstractString`) shared by the SVG-backend verbs.
+- **`src/storyboard.jl`** — `storyboard(panels; backend=:svg, ncols=length(panels), …,
+  output="storyboard.svg", overwrite=false)`. Ordered, single-row default; rejects animated
+  panels (static). Writes by default; `output=nothing` returns the string. Same backend
+  dispatch as montage (`:makie` errors on the abstract fallback).
+- **PCMM ext `storyboard(::Type{Simulation}, sim_id; …)`** — one sim. `index` (vector of
+  `Integer`/`:initial`/`:final`) **or** `n_snapshots` (default 4, evenly-spaced incl.
+  endpoints via `_evenSnapshots`). Titles = snapshot times via `PhysiCellSnapshot(sim_id,
+  sel).time` (metadata only), through a `title` function (default `t -> "t = $t"`).
+
+### Key decisions
+- **`index`/`n_snapshots` interaction (user's design, adopted):** `n_snapshots::Integer =
+  isnothing(index) ? 4 : length(index)`. So the user passes only one; no `n_snapshots=nothing`
+  ceremony. If both are passed with different lengths → throw. `index` present ⇒ it wins.
+- **Timestamp titles default to raw time** (`"t = $t"`, PhysiCell minutes) — user's call;
+  a custom `title` function reformats (e.g. minutes→days). Robust fallback to a selector
+  label if a snapshot's time can't be read (`PhysiCellSnapshot` returns `missing`).
+- **File-vs-metadata naming gotcha:** PhysiCell writes SVG frames as `snapshotNNNN.svg` but
+  metadata as `outputNNNN.xml`; `PhysiCellSnapshot(sim_id, i).time` reads the XML, so times
+  resolve for both integer indices and `:initial`/`:final` (all present in the dev project).
+
+### Verification
+- Core tests 49/49 (added storyboard geometry/ordering/ncols/guard tests). No heavy deps.
+- PCMM `storyboard(Simulation, 1)` on the dev project → a 1×4 filmstrip at t = 0/2400/4800/7200,
+  each timestamp-titled, tumor growing 300→510 agents; rendered and eyeballed. `n_snapshots`,
+  explicit `index` with `:initial`/`:final`, the mismatch throw, and a custom `title` all verified.
+
+### Docs
+- PRD `storyboard` feature marked implemented; Movies feature notes storyboard is static;
+  README usage + Implementation Status updated; PCMM handoff (`PCMM_DOCS_HANDOFF.md`, drafted
+  this session) has `montage`/`storyboard` sections ready, `tableau` still a stub.
+
+### Next
+- `tableau` + the CairoMakie extension (`:makie` backend, real heatmaps/colorbars). Then
+  finish the handoff's tableau section and hand off to a PCMM session.
+
+### Input-type overloads (user request, same session)
+Both verbs now accept PCMM objects, not just ids — each resolves to constituent simulations
+via `simulationIDs` and forwards:
+- `montage`: scalar `Integer`, `::AbstractTrial` (Simulation/Monad/Sampling/Trial), `::PCMMOutput`,
+  and vectors of either (`AbstractVector{<:AbstractTrial}` / `AbstractVector{<:PCMMOutput}`).
+- `storyboard` (single-sim): `::Simulation` object, `::PCMMOutput{Simulation}`.
+
+Types: `AbstractTrial` (ModelManager, re-exported), `const PCMMOutput = MMOutput{T<:AbstractTrial}`
+with a `.trial` field. Dispatch is unambiguous — these instance/vector methods are more
+specific than the core `montage(panels::Any)`, and SVG-path vectors (`Vector{String}`) still
+route to core. Verified on the dev project (trial objects, output objects, vectors of each);
+core tests unaffected (49/49).

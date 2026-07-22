@@ -112,10 +112,9 @@ A feature is complete when **all** are true:
 - Renderers available on the machine: `rsvg-convert`, `qlmanage`, `sips`.
 
 ## To-dos
-Architecture decisions are resolved (2026-07-21) — see [PRD.md](PRD.md) "Decisions". **Done:** `montage` (SVG static + movie-of-movies via `record`), the movie extension (`MontageMovieExt`, Rsvg/Cairo/FFMPEG), and the PCMM extension (`montage(::Type{Simulation}, …)`). See [README.md](README.md) Implementation Status. When starting a task, check whether any of these should come first:
+Architecture decisions are resolved (2026-07-21) — see [PRD.md](PRD.md) "Decisions". **Done:** `montage` (SVG static + movie-of-movies via `record`), `storyboard` (static filmstrip), the movie extension (`MontageMovieExt`), and the PCMM extension (`montage`/`storyboard` on `::Type{Simulation}`). See [README.md](README.md) Implementation Status. When starting a task, check whether any of these should come first:
 
-- **Handoff doc → PCMM session:** prepare a handoff (in this repo, for the maintainer to carry to a PCMM-repo session) describing a new **"Visualizing simulations with Montage"** docs page to add to PCMM: a tutorial for `montage(::Type{Simulation}, …)` / `record`, linking back to Montage's API reference. The tutorial's audience is PCMM users, so it belongs in PCMM's docs — but PCMM is a read-only boundary here, so it can't be authored from this repo. See [progress.md](progress.md) "Docs locality".
-- **`storyboard`** — ordered single-subject sequence, static + movie (SVG path first).
-- **`tableau`** and the **`:makie` backend** — the CairoMakie extension (`MontageCairoMakieExt`): real heatmaps/colorbars, shared axes, data-driven movies.
+- **`tableau`** and the **`:makie` backend** — the CairoMakie extension (`MontageCairoMakieExt`): real heatmaps/colorbars, shared axes, data-driven movies. **(Next.)**
+- **Handoff doc → PCMM session** ([PCMM_DOCS_HANDOFF.md](PCMM_DOCS_HANDOFF.md)): drafted, with `montage`/`storyboard` sections ready and a `tableau` stub. Finish the `tableau` section once that verb lands, then the maintainer carries it to a PCMM-repo session to add the "Visualizing simulations with Montage" page (PCMM is a read-only boundary here). See [progress.md](progress.md) "Docs locality".
 - **Time-based frame alignment** — movie follow-up: align by simulation time (nearest snapshot on a common grid), not just index.
 - **Deferred until built:** the `tableau` layout spec.

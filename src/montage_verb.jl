@@ -79,12 +79,21 @@ end
 # --- :svg backend (core) ---
 function _montage(::SVGBackend, panels::AbstractVector{Panel};
                   panel_width, title_height, pad, output, overwrite)
-    svg = _svgMontage(panels; panel_width, title_height, pad)
-    if output !== nothing
-        _assertWritable(output, overwrite)
-        mkpath(dirname(abspath(String(output))))
-        write(String(output), svg)
-    end
+    svg = _svgGrid(panels; panel_width, title_height, pad)
+    return _writeSVG(svg, output, overwrite)
+end
+
+"""
+    _writeSVG(svg, output, overwrite) -> svg
+
+Write `svg` to `output` (guarded by `_assertWritable`) and return it; if `output` is
+`nothing`, return `svg` without writing. Shared by the SVG-backend verbs.
+"""
+_writeSVG(svg, ::Nothing, overwrite) = svg
+function _writeSVG(svg, output::AbstractString, overwrite)
+    _assertWritable(output, overwrite)
+    mkpath(dirname(abspath(String(output))))
+    write(String(output), svg)
     return svg
 end
 
