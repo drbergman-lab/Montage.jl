@@ -39,11 +39,12 @@ function _svgFrame(spec::MontageSpec, t::Integer)
 end
 
 """
-    record(spec::MontageSpec, path; framerate=15, scale=1) -> path
+    record(spec::MontageSpec, path="montage.mp4"; framerate=15, scale=1, overwrite=false) -> path
 
-Render a movie of `spec` to `path` (extension picks the container, e.g. `.mp4`/`.gif`),
-with every panel playing through its frames in lockstep. Each output frame is the
-montage of that timepoint's frames.
+Render a movie of `spec` to `path` (extension picks the container, e.g. `.mp4`/`.gif`;
+defaults to `montage.mp4` in the current directory), with every panel playing through its
+frames in lockstep. Each output frame is the montage of that timepoint's frames. Errors if
+`path` exists unless `overwrite=true`.
 
 Requires the movie extension — run `using Rsvg, Cairo, FFMPEG` — otherwise a helpful
 error is thrown.
@@ -51,6 +52,7 @@ error is thrown.
 # Keyword Arguments
 - `framerate::Integer=15`: frames per second.
 - `scale::Real=1`: rasterization scale factor; `>1` renders sharper (larger) frames.
+- `overwrite::Bool=false`: allow writing over an existing `path`.
 
 # Examples
 ```julia
@@ -60,7 +62,9 @@ spec = montage([Panel(["a/f1.svg","a/f2.svg"]; title="A"),
 record(spec, "compare.mp4"; framerate=15)
 ```
 """
-function record(spec::MontageSpec, path::AbstractString; framerate::Integer=15, scale::Real=1)
+function record(spec::MontageSpec, path::AbstractString="montage.mp4";
+                framerate::Integer=15, scale::Real=1, overwrite::Bool=false)
+    _assertWritable(path, overwrite)
     return _recordSVGMovie(spec, path, framerate, scale)
 end
 

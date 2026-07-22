@@ -109,3 +109,50 @@ This **revises the earlier assumption** that "movies = CairoMakie extension." Mo
 ### Testing
 - Committed core tests stay dependency-free: `MontageSpec` construction, index truncation + length-mismatch warning, `_svgFrame` output, and the `record` fallback error. **The heavy deps stay out of the core test target.**
 - End-to-end movie render (Rsvg/Cairo/FFMPEG) verified **manually** this session in a scratch env, not in the committed suite (per the "no heavy deps in core tests" rule).
+
+---
+
+## Session: PCMM convenience extension — `montage(Simulation, …)` (2026-07-21)
+
+### Goal
+Collapse the manual snapshot-path assembly (seen in the dev project's `GenerateData.jl`) into a one-liner: with PCMM loaded, `montage(Simulation, ids; index=…)` resolves each sim's output SVGs into panels — a still-image grid or a movie, decided by the `index` value. Branch `feature/pcmm-ext`.
+
+### Extension direction (decided with the user)
+**Montage hosts the extension** (`ext/MontagePhysiCellModelManagerExt.jl`, PCMM as weakdep), not PCMM hosting one for Montage. Rationale: the method extends Montage's own `montage` (its public API), the viz→data dependency direction is the correct one, the glue co-locates with the churning package, and CLAUDE.md treats PCMM as read-only. Both directions are legal (no piracy — PCMM owns `Simulation`); this is a coupling call.
+
+### Key facts that shaped it
+- `Simulation`, `simulationIDs`, `trialFolder`, `dataDir` are **ModelManager's**, re-exported by PCMM (`@reexport using ModelManager`). The extension triggers on **PhysiCellModelManager** anyway, because the knowledge added is the PhysiCell `.svg` output-file convention (`output/final.svg`, `output/snapshotNNNNNNNN.svg`), which ModelManager (simulator-agnostic) lacks.
+- PCMM already has `makeMovie(sim_id)` (single-sim, ImageMagick+FFmpeg). Montage's montage-of-movies is the complementary **cross-sim grid** — no conflict.
+- The dev project's `GenerateData.jl` already hand-builds `framesA`/`framesB` + `Panel` + `record(...)`; the extension's `index=:all` (one call) replaces that whole block.
+
+### API (resolved with the user)
+`montage(::Type{Simulation}, sim_ids; index=:final, title=(id->"Sim $id"), panel_width=300, title_height=34, pad=12, output=_defaultOutput(index), overwrite=false, framerate=15)`. `sim_ids` is **required** (no all-sims default — use `simulationIDs()` explicitly).
+- **One kwarg decides still vs. movie (user's fusion, superseding the earlier `frames`/`index` split):** `index` = `:final`/`:initial`/Integer → still image (matches PCMM's `PhysiCellSnapshot`); `index` = `:all` or a vector/range of indices → movie. No separate `frames` kwarg.
+- **Writes by default** (user preference: "users call this to see the output"). `output::Union{Nothing,AbstractString}` defaults to a **computed real path** (`_defaultOutput(index)` → `…/montage.svg` still or `…/montage.mp4` movie), so there is **no "not-given" sentinel** — a path overrides. `output=nothing` uniformly means "don't write, return the in-memory result": the SVG string for a still image, or a `MontageSpec` for a movie. (Refined from an earlier `missing`/`nothing` two-sentinel design, which was confusing — the single `nothing` + type annotation is clearer and rejects non-path values with a `TypeError`.)
+- **Overwrite guard:** error if `output` exists unless `overwrite=true`, for both still and movie writes.
+- **The PCMM method is now a thin wrapper over core `montage`** — it just builds panels (a state SVG per sim, or a frame sequence per sim) and hands them to core, which does everything below.
+
+### Core `montage`/`record` unified too (user's follow-up: "unify the record call in core")
+The write-by-default + one-call-movie behavior was pushed **into the core**, so core and PCMM behave identically (only the default *location* differs — core → cwd, PCMM → `dataDir()/outputs`):
+- **Core `montage(panels; …, output=_defaultOutput(panels), overwrite=false, framerate=15)`** now decides still vs. movie from **panel content** (`_looksAnimated`): all-single-image → SVG; any frame-sequence panel → movie rendered **in one call** via `record`. Writes by default to `montage.svg`/`montage.mp4` in cwd. `output=nothing` returns the in-memory result (SVG `String` or `MontageSpec`) — the composable escape hatch, and the only movie path that works without the movie extension loaded.
+- **Core `record(spec, path="montage.mp4"; framerate, scale, overwrite)`** gained a default path + the overwrite guard. It stays the underlying renderer (and public, for hand-built specs / `output=nothing` results).
+- **Shared `_assertWritable(path, overwrite)` lives in core** and guards every write (`montage` static, `record`); the PCMM ext dropped its private copy and just passes `output`/`overwrite` down.
+- This **supersedes the movie-session decision** that `montage` always returns a `MontageSpec` for `record` (the strict two-call contract): the two-call flow is now the `output=nothing` opt-in, not the default.
+
+### Wiring
+- `Project.toml`: added `PhysiCellModelManager` (UUID `7582d1aa-…`) to `[weakdeps]`, `MontagePhysiCellModelManagerExt = "PhysiCellModelManager"` to `[extensions]`, `PhysiCellModelManager = "0.3"` to `[compat]`. Montage must be registered in **BergmanLabRegistry** (where PCMM lives), not General — CI/TagBot/CompatHelper were wired to that registry in a prior commit.
+
+### Testing / verification
+- Core tests unchanged and green (36/36); the PCMM weakdep declaration doesn't disturb core resolution.
+- **No PCMM in the core test suite** (heavy; needs a live project). Verified **manually** against the `GeorgetownR01` dev project: still images for `index=:final`/`:initial`/Integer; bad `index` symbol and bare `montage(Simulation)` error correctly; `index=:all` writes a correct 2×2 movie in one call (sims synchronized by time, PhysiCell styling intact); overwrite guard throws.
+
+### Note
+- Verified the extension loads via `Base.get_extension` and that `record` still errors helpfully when the movie deps aren't also loaded (the two extensions are independent).
+
+### Docs locality (decision + follow-up)
+Code-locality and docs-locality are separate: the extension *code* rightly lives in Montage (it extends Montage's `montage`; dependency points viz→data), but the *user-facing tutorial* for `montage(::Type{Simulation}, …)` has a **PCMM audience** — those users look in PCMM's docs, not in a viz dependency. A generic Montage user (arbitrary SVGs, no PCMM) shouldn't be led through `Simulation` details.
+
+Resolution:
+- The extension method's **docstring stays in Montage** (technical necessity — Documenter/`?` pull it from where the method is defined) and belongs under a clearly-labeled "PhysiCellModelManager extension" heading in Montage's API reference. Reference ≠ tutorial.
+- Montage's user docs stay **generic-first**; PCMM is a short "if you use PCMM…" pointer. Per user's call (2026-07-21), the **fuller worked example in the README is kept for now** and will be slimmed to a pointer only once PCMM has its own page.
+- The real how-to — a **"Visualizing simulations with Montage"** page (tutorial for `montage(Simulation)` / `record`, linking back to Montage's API reference) — **belongs in PCMM's docs**. We can't author it from here (PCMM is a read-only boundary / separate repo), so it's a cross-repo follow-up for a PCMM session (see the handoff to-do in CLAUDE.md).
