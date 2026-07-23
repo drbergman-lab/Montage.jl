@@ -3,6 +3,13 @@
 # Uniform grid of equal panels. Core implements the :svg backend; the :makie
 # backend's method is added by MontageCairoMakieExt (loaded via `using CairoMakie`).
 
+# Does this (possibly loose) panel carry a frame sequence (→ movie) rather than one image?
+_looksAnimated(p::Panel) = _isAnimated(p)
+_looksAnimated(x) = x isa AbstractVector
+
+# Default output path, in the current directory, keyed to still image vs. movie.
+_defaultOutput(panels) = any(_looksAnimated, panels) ? "montage.mp4" : "montage.svg"
+
 """
     montage(panels; backend=:svg, panel_width=300, title_height=34, pad=12,
             output=<auto: montage.svg | montage.mp4>, overwrite=false, framerate=15)
@@ -55,13 +62,6 @@ montage([Panel(["a/f1.svg", "a/f2.svg"]; title="A"),
          Panel(["b/f1.svg", "b/f2.svg"]; title="B")]; output="compare.mp4", framerate=15)
 ```
 """
-# Does this (possibly loose) panel carry a frame sequence (→ movie) rather than one image?
-_looksAnimated(p::Panel) = _isAnimated(p)
-_looksAnimated(x) = x isa AbstractVector
-
-# Default output path, in the current directory, keyed to still image vs. movie.
-_defaultOutput(panels) = any(_looksAnimated, panels) ? "montage.mp4" : "montage.svg"
-
 function montage(panels; backend::Symbol=:svg, panel_width::Real=300,
                  title_height::Real=34, pad::Real=12,
                  output::Union{Nothing,AbstractString}=_defaultOutput(panels),

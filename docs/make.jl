@@ -12,8 +12,17 @@ makedocs(;
         edit_link="main",
         assets=String[],
     ),
+    checkdocs=:exports,
     pages=[
         "Home" => "index.md",
+        "Manual" => [
+            "man/montage.md",
+            "man/storyboard.md",
+            "man/tableau.md",
+            "man/movies.md",
+            "man/extensions.md",
+        ],
+        "API reference" => "reference.md",
     ],
 )
 
