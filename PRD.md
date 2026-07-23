@@ -78,20 +78,29 @@
 
 ---
 
-## Feature: `tableau` (core)
+## Feature: `tableau` — CairoMakie backend **(in progress, design resolved 2026-07-22)**
 
-**One-line description:** Compose a single scene with a focal panel and satellite panels arranged around it.
+**One-line description:** Compose a single simulation state as a focal panel with satellite panels arranged around it.
 
 **Priority:** Must-have (forces the CairoMakie path).
 
-**Behavioral specification:**
-- One focal panel (e.g. cell scatter) centered; satellite panels (e.g. one substrate heatmap + colorbar per channel) arranged around it, sharing a spatial extent with the focal panel.
-- Built with Makie `GridLayout` / insets; real `Colorbar`s; shared axes.
-- Requires re-plotting from data (not SVG rasterization) → PCMM data layer via the extension for the PCMM convenience methods.
-- Exact layout-declaration API (auto-ring around center vs. explicit positions) is an **open decision**.
+**Resolved design (2026-07-22):**
+- **Auto-ring layout:** focal panel centered; satellites auto-placed around it (a grid ring), count-dependent. Explicit positions are a later option.
+- **Focal = cell scatter re-plotted from data** (`scatter!`, colored by cell type), in the same axis coordinates as the satellite heatmaps → a true shared spatial extent.
+- **Satellites = one `heatmap!` + `Colorbar` per substrate** (voxel grid reshaped from the `substrates` DataFrame).
+- **CairoMakie-only, data-driven** — no SVG stitching. Static for v1 (tableau *movies* via `Makie.record` are a deferred follow-up). A `:makie` backend for `montage`/`storyboard` was considered and **declined** — no added value; those verbs stay SVG-only.
+
+**Architecture — two extensions (composed); the data-agnostic work lives in the CairoMakie ext:**
+- `MontageCairoMakieExt` (weakdep `CairoMakie`): the **public generic `tableau(focal, satellites; …)`** — `focal`/`satellites` are axis callbacks; it owns everything data-agnostic: `Figure`/`GridLayout`, center focal + auto-ring satellites (`_ringSlots`), shared axes, `Colorbar`s, legend placement (`_placeLegend!`), and output-writing. (`_tableauFigure` is a private layout helper here.)
+- `MontageCairoMakiePCMMExt` (weakdeps `CairoMakie` **and** `PhysiCellModelManager`): `tableau(::Type{Simulation}, sim_id; …)` — a **thin adapter**: pulls cells/substrates from `PhysiCellSnapshot`, builds the scatter/heatmap callbacks (`_substrateGrid` reshapes the voxel grid), then delegates to the generic `tableau`. PhysiCell-specific code only.
+- Core declares + exports `tableau` with a fallback erroring "run `using CairoMakie, PhysiCellModelManager`".
+
+**API:**
+- Generic: `tableau(focal, satellites; focal_title, satellite_titles, colorbar_labels, xlims, ylims, legend, size, output="tableau.png", overwrite)` — data-agnostic, callback-based.
+- PhysiCell: `tableau(::Type{Simulation}, sim_id; time=:final, substrates=<all>, colormap=:viridis, markersize, legend=:auto, size, output=<dataDir()/outputs/tableau.png>, overwrite=false)`. `time` is a single `PhysiCellSnapshot` selector (`:final`/`:initial`/`Integer`). Writes by default (raster `.png`; CairoMakie also does `.svg`/`.pdf`), `output=nothing` returns the Makie `Figure`, overwrite guard. `legend` places the cell-type legend (`:auto` → an empty grid cell off the plot; a corner `Symbol`; a `(row,col)`; or `nothing`). Also accepts a `Simulation`/`PCMMOutput{Simulation}` object.
 
 **Acceptance criteria:**
-- `tableau(Simulation, sim_id; time=:final, substrates=…)` renders the cell scatter centered with one heatmap+colorbar per substrate around it, all on a shared spatial extent.
+- `tableau(Simulation, sim_id)` renders the cell scatter centered with one heatmap+colorbar per substrate around it, on a shared spatial extent, and writes a `.png`. (Verified manually on the dev project.)
 
 ---
 

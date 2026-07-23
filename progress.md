@@ -220,3 +220,71 @@ with a `.trial` field. Dispatch is unambiguous — these instance/vector methods
 specific than the core `montage(panels::Any)`, and SVG-path vectors (`Vector{String}`) still
 route to core. Verified on the dev project (trial objects, output objects, vectors of each);
 core tests unaffected (49/49).
+
+---
+
+## Session: `tableau` + CairoMakie backend (2026-07-22)
+
+Branch `feature/tableau`. The last verb — CairoMakie-only, data-driven. Design resolved with
+the user: **auto-ring** layout (focal centered, satellites around), focal = **cells re-plotted
+as scatter** (shared axis with the heatmaps), **CairoMakie weakdep, static v1** (tableau movies
+deferred; a `:makie` backend for montage/storyboard was later declined — no added value).
+
+### Architecture — two composed extensions
+- Core declares + exports `tableau` (fallback errors "run using CairoMakie, PhysiCellModelManager")
+  and declares `function _tableauFigure end` (the layout-engine hook).
+- `MontageCairoMakieExt` (weakdep CairoMakie): implements `_tableauFigure(focal, satellites; …)` —
+  `Figure`/`GridLayout`, focal centered via `_ringSlots`, satellites ringed each with an `Axis`
+  + `Colorbar`, shared `limits!`/`DataAspect`. Data-agnostic; takes axis-callbacks.
+- `MontageCairoMakiePCMMExt` (weakdeps CairoMakie + PhysiCellModelManager): `tableau(::Type{Simulation},
+  sim_id; time, substrates, colormap, …)` — loads `PhysiCellSnapshot` cells+substrates, builds the
+  callbacks (scatter cells by `cell_type_name`; `heatmap!` each substrate on the reshaped voxel grid),
+  calls `_tableauFigure`, writes the figure. Cross-ext call works because loading PCMM+CairoMakie
+  loads both exts, and `_tableauFigure` is core-owned.
+
+### Data facts (from the dev project, sim 1)
+- Cells DataFrame: `position_1`/`_2`/`_3`, `cell_type` (Int), `cell_type_name` (String, e.g. "tumor_epi").
+- Substrates DataFrame: `["x","y","z","volume", <names…>]` → substrate names = columns after `volume`
+  (here debris/ecm/oxygen). One row per voxel; grid 50×50×1 (2D). Reshape to a matrix via an explicit
+  (x,y)→index pivot (robust to voxel ordering). `substrateNames` is NOT exported — derive from columns.
+- Mesh: `x`/`y`/`z`/`bounding_box`; x,y span −490…490 (50 pts each) → shared axis limits.
+
+### Implementation + verification
+- Core: `src/tableau.jl` (declares/exports `tableau` + fallback; declares `_tableauFigure`).
+- `ext/MontageCairoMakieExt.jl` — `_ringSlots` + `_tableauFigure`. `ext/MontageCairoMakiePCMMExt.jl`
+  — `tableau(::Type{Simulation}, sim_id; time, substrates, colormap, markersize, size, output,
+  overwrite)` + `Simulation`/`PCMMOutput{Simulation}` object forms. `_substrateGrid` pivots the
+  voxel column to a matrix (Base-only; **no `using DataFrames`** — property access + `propertynames`).
+- `Project.toml`: `CairoMakie` weakdep + the two `[extensions]` entries + compat `0.15`.
+- Core tests still 49/49 (tableau core is just a declaration; heavy deps stay out of the suite).
+- **Verified** in a scratch env (Montage-dev + PCMM + CairoMakie), `initializeModelManager` on the
+  GeorgetownR01 project: `tableau(Simulation, 1)` rendered a correct scene — cells (caf/nk/tumor_epi/
+  tumor_mes) centered with a legend, `debris`/`oxygen`/`ecm` heatmaps ringed around, colorbars, shared
+  extent; oxygen depleted in the tumor core, ecm ring at the periphery (biologically coherent). The
+  substrate-subset, object-input, and `output=nothing` (returns `Figure`) forms also work.
+
+### Gotchas / notes
+- Both exts load whenever CairoMakie(+PCMM) are present; `MontageCairoMakiePCMMExt` calls the
+  core-owned `Montage._tableauFigure` (implemented in `MontageCairoMakieExt`) — clean cross-ext call.
+- `substrateNames` is **not exported** by PCMM; derive substrate columns from `propertynames(subs)`
+  minus `("x","y","z","volume")`.
+- CairoMakie is heavy to precompile in a fresh env (~minutes); it was already in the depot.
+
+### Next
+- `tableau` movies (`Makie.record` over `time`) are the remaining verb follow-up. (A `:makie`
+  backend for `montage`/`storyboard` was declined — no added value.) The PCMM docs handoff
+  (`PCMM_DOCS_HANDOFF.md`) now has all three verb sections ready to carry to a PCMM session.
+
+### Follow-up refinements (same session)
+- **Legend not visible over dense cells** → added a `legend` kwarg. Placement moved out of the
+  focal callback into the layout engine (which knows the grid): `:auto` (default) puts the legend
+  in an empty grid cell *off the cell plot*, falling back to an opaque in-axis corner if the grid
+  is full; a position `Symbol`, an explicit `(row,col)`, or `nothing` are also accepted.
+- **Docstring locality** → the detailed PCMM behavior moved onto the `tableau(::Type{Simulation},…)`
+  method docstring (in the ext); the core `tableau` docstring stays generic. Matches montage/storyboard.
+- **Shifted data-agnostic work out of the PCMM ext** → promoted a **public generic
+  `tableau(focal, satellites; …)`** into `MontageCairoMakieExt` that owns layout + colorbars +
+  legend + output. `MontageCairoMakiePCMMExt` is now a thin adapter (PhysiCell data → callbacks →
+  generic `tableau`); `_tableauFigure` is a private helper of the CairoMakie ext (the core
+  `_tableauFigure` hook was removed). Verified: PCMM path unchanged, and the generic `tableau`
+  composes arbitrary callbacks standalone (scatter + heatmaps, legend auto-placed).

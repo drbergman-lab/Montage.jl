@@ -51,6 +51,10 @@ montage(Simulation, [1, 2, 3]; index=:initial, output=nothing)   # initial state
 storyboard(Simulation, 32)                                       # 4 evenly-spaced frames
 storyboard(Simulation, 32; index=[:initial, 30, 60, :final])     # explicit timepoints
 
+# tableau: one state, cells centered with substrate heatmaps around (needs CairoMakie)
+using CairoMakie
+tableau(Simulation, 32)                                          # cells + all substrates → tableau.png
+
 using Rsvg, Cairo, FFMPEG                                         # movie extension
 montage(Simulation, [1, 2, 22, 32]; index=:all, output="compare.mp4", framerate=15)  # their movies, in lockstep
 ```
@@ -78,11 +82,10 @@ Pkg.add(url="https://github.com/drbergman-lab/Montage.jl")
 - [x] Movie extension (`MontageMovieExt`, weakdeps `Rsvg`/`Cairo`/`FFMPEG`) — montage-of-movies via SVG-frame + FFMPEG; verified end-to-end on 4 real sims (2×2 grid, 25 frames, panels evolving in lockstep with PhysiCell styling)
 - [x] `storyboard` (core) — ordered static filmstrip, single-row default with `ncols` wrap; shares the `_svgGrid` builder with `montage`; rejects animated panels (static only)
 - [x] PCMM extension (`MontagePhysiCellModelManagerExt`, weakdep `PhysiCellModelManager`) — `montage(::Type{Simulation}, ids)` (`index` picks still-grid vs. movie) and `storyboard(::Type{Simulation}, sim_id)` (`index` vector or `n_snapshots`; timestamp titles); writes by default with `overwrite` guard; also accepts trial objects / `PCMMOutput`s / vectors directly (resolved to their sims); verified end-to-end on the dev project
+- [x] `tableau` — CairoMakie backend: focal cell-scatter centered, satellite substrate heatmaps + colorbars auto-ringed around it, shared spatial extent. `MontageCairoMakieExt` (weakdep `CairoMakie`) is the data-agnostic layout engine (`_tableauFigure`); `MontageCairoMakiePCMMExt` (weakdeps `CairoMakie` + `PhysiCellModelManager`) adds `tableau(::Type{Simulation}, sim_id)`. Verified end-to-end on the dev project
 - [x] Core test suite — SVG-backend verbs (montage, storyboard) + movie spec on hand-written SVGs; no heavy deps
 
 ### Planned
 
-- [ ] `tableau` (core) — focal + satellite scene via CairoMakie `GridLayout` with colorbars
-- [ ] CairoMakie extension — `:makie` backend + `tableau` + data-driven/heatmap movies (`Makie.record`)
-- [ ] PCMM `tableau` method — added when that verb lands
+- [ ] `tableau` movies — animate a tableau over `time` via `Makie.record`
 - [ ] Time-based frame alignment — align movie frames by simulation time (nearest snapshot on a common grid), not just index (see [PRD.md](PRD.md))

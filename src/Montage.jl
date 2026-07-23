@@ -17,6 +17,9 @@ include("movie.jl")
 # storyboard: one subject's time evolution as a static ordered strip.
 include("storyboard.jl")
 
-export Panel, MontageSpec, montage, storyboard, record
+# tableau: focal + satellite scene (CairoMakie extensions implement it).
+include("tableau.jl")
+
+export Panel, MontageSpec, montage, storyboard, tableau, record
 
 end
