@@ -288,3 +288,55 @@ deferred; a `:makie` backend for montage/storyboard was later declined — no ad
   generic `tableau`); `_tableauFigure` is a private helper of the CairoMakie ext (the core
   `_tableauFigure` hook was removed). Verified: PCMM path unchanged, and the generic `tableau`
   composes arbitrary callbacks standalone (scatter + heatmaps, legend auto-placed).
+
+---
+
+## Session: `tableau` movies + `time`→`index` (2026-07-23)
+
+Branch `feature/tableau-movies`.
+
+### API fix (user caught the inconsistency)
+tableau's snapshot selector was named `time`, but `montage`/`storyboard` (and PCMM's
+`PhysiCellSnapshot`) use `index`. Renamed `time`→`index` so all three verbs match. The
+`index` value decides still vs. movie, exactly like `montage`: `:final`/`:initial`/`Integer`
+→ still; `:all` or a vector/range → movie.
+
+### How the movie is built (reuses the generic engine)
+No new generic API. In `MontageCairoMakiePCMMExt._tableauMovie`:
+- Load the selected snapshots; build **Observables** — per-cell-type position vectors, per-
+  substrate matrices, and an animated title `Observable{String}`.
+- Build focal/satellite callbacks that plot those Observables, then call the generic
+  `Montage.tableau(focal, satellites; output=nothing)` — **reuses the whole layout engine**
+  (auto-ring, colorbars, legend) to build the Figure once.
+- `CairoMakie.record(fig, path, eachindex(frames)) do k; update the Observables to frame k; end`.
+- To make the animated title work, loosened the generic `focal_title` type (String → any, so an
+  `Observable` passes through to `Axis(title=…)`).
+
+### Correctness decisions (confirmed with the user)
+- **Fixed global colorrange per substrate** (min/max across all frames) → a stable, comparable
+  colorscale (no flicker). Constant-field guard: expand a zero range by one.
+- **Union of cell types across frames** → stable legend + stable per-type colors.
+- `output=nothing` returns a Figure for a *still*; a *movie* requires a path (errors on nothing).
+  Default output extension is `.mp4` (movie) vs `.png` (still), keyed on `_isMovieIndex(index)`.
+- **No new dependency:** Makie handles video encoding; the FFMPEG weakdep is only for the
+  SVG-frame montage-of-movies path.
+
+### Verification
+- Core tests 49/49 (tableau movie is ext-only; heavy deps stay out of the suite).
+- `tableau(Simulation, 1; index=0:20:120)` on the dev project wrote a correct `.mp4`: title
+  animates `t=0 → 6000`, cells grow, substrates evolve (oxygen depletes in the tumor core, ecm
+  ring forms), colorscales fixed across frames, legend stable. Still `index=:final` also verified.
+
+### Note
+- `:makie` backend for `montage`/`storyboard` was **declined** (no value). The `backend`
+  kwarg + `MakieBackend` selector on those verbs are now vestigial scaffolding (candidate for a
+  future cleanup).
+
+### Naming: `tableau` vs. `dashboard` (resolved)
+Considered renaming `tableau` → `dashboard`. Resolution: **keep `tableau`** (composition-register
+cohesion with montage/storyboard; precise for a focal-centric composed scene, not a uniform grid;
+"dashboard" connotes interactive/live monitoring, which the static/movie figure isn't). And
+**reserve `dashboard`** for a *future, distinct* verb — a live-updating/interactive counterpart
+built on the same Observable-driven layout engine (drive `_tableauFigure` from a running sim's
+output or a time slider instead of a recorded frame loop). So the two words become two features,
+not a rename. See CLAUDE.md To-dos.

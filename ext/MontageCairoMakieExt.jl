@@ -27,7 +27,7 @@ end
 # centered axis; each `satellites[i]` draws into a ringed axis and returns the plot its
 # colorbar reads. All axes share `xlims`/`ylims`. `legend` is handled by `_placeLegend!`.
 function _tableauFigure(focal, satellites;
-                        focal_title::AbstractString="",
+                        focal_title="",                     # String or an Observable (animated)
                         satellite_titles::AbstractVector=String[],
                         colorbar_labels::AbstractVector=String[],
                         xlims=nothing, ylims=nothing, size=(1000, 1000),
@@ -108,7 +108,7 @@ tableau(ax -> scatter!(ax, xs, ys),
 ```
 """
 function Montage.tableau(focal::Function, satellites::AbstractVector;
-                         focal_title::AbstractString="",
+                         focal_title="",                    # String or an Observable (animated)
                          satellite_titles::AbstractVector=String[],
                          colorbar_labels::AbstractVector=String[],
                          xlims=nothing, ylims=nothing, legend=:auto, size=(1000, 1000),

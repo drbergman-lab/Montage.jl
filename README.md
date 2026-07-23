@@ -53,7 +53,8 @@ storyboard(Simulation, 32; index=[:initial, 30, 60, :final])     # explicit time
 
 # tableau: one state, cells centered with substrate heatmaps around (needs CairoMakie)
 using CairoMakie
-tableau(Simulation, 32)                                          # cells + all substrates → tableau.png
+tableau(Simulation, 32)                                          # still → tableau.png
+tableau(Simulation, 32; index=:all, output="tableau.mp4")        # movie: the scene over time
 
 using Rsvg, Cairo, FFMPEG                                         # movie extension
 montage(Simulation, [1, 2, 22, 32]; index=:all, output="compare.mp4", framerate=15)  # their movies, in lockstep
@@ -82,10 +83,10 @@ Pkg.add(url="https://github.com/drbergman-lab/Montage.jl")
 - [x] Movie extension (`MontageMovieExt`, weakdeps `Rsvg`/`Cairo`/`FFMPEG`) — montage-of-movies via SVG-frame + FFMPEG; verified end-to-end on 4 real sims (2×2 grid, 25 frames, panels evolving in lockstep with PhysiCell styling)
 - [x] `storyboard` (core) — ordered static filmstrip, single-row default with `ncols` wrap; shares the `_svgGrid` builder with `montage`; rejects animated panels (static only)
 - [x] PCMM extension (`MontagePhysiCellModelManagerExt`, weakdep `PhysiCellModelManager`) — `montage(::Type{Simulation}, ids)` (`index` picks still-grid vs. movie) and `storyboard(::Type{Simulation}, sim_id)` (`index` vector or `n_snapshots`; timestamp titles); writes by default with `overwrite` guard; also accepts trial objects / `PCMMOutput`s / vectors directly (resolved to their sims); verified end-to-end on the dev project
-- [x] `tableau` — CairoMakie backend: focal cell-scatter centered, satellite substrate heatmaps + colorbars auto-ringed around it, shared spatial extent. `MontageCairoMakieExt` (weakdep `CairoMakie`) is the data-agnostic layout engine (`_tableauFigure`); `MontageCairoMakiePCMMExt` (weakdeps `CairoMakie` + `PhysiCellModelManager`) adds `tableau(::Type{Simulation}, sim_id)`. Verified end-to-end on the dev project
+- [x] `tableau` — CairoMakie backend: focal cell-scatter centered, satellite substrate heatmaps + colorbars auto-ringed around it, shared spatial extent. `MontageCairoMakieExt` (weakdep `CairoMakie`) is the data-agnostic layout engine + public generic `tableau(focal, satellites)`; `MontageCairoMakiePCMMExt` (weakdeps `CairoMakie` + `PhysiCellModelManager`) adds `tableau(::Type{Simulation}, sim_id)`. Verified end-to-end on the dev project
+- [x] `tableau` movies — `index=:all`/vector/range animates the scene over snapshots via `Makie.record` (fixed colorscale per substrate, stable legend, animated `t=…` title); writes `.mp4`. Verified end-to-end on the dev project
 - [x] Core test suite — SVG-backend verbs (montage, storyboard) + movie spec on hand-written SVGs; no heavy deps
 
 ### Planned
 
-- [ ] `tableau` movies — animate a tableau over `time` via `Makie.record`
 - [ ] Time-based frame alignment — align movie frames by simulation time (nearest snapshot on a common grid), not just index (see [PRD.md](PRD.md))

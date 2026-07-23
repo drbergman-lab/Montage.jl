@@ -27,9 +27,12 @@ Static vs. animated is an **orthogonal axis**: any verb can render a static figu
 ## Fixed Constraints (decided — do not relitigate)
 1. **Package name is `Montage.jl`; module is `Montage`.** The eponymous `montage` function inside module `Montage` is intentional.
 2. **Core must not force any heavy dependency.** Both PhysiCellModelManager (PCMM) *and* CairoMakie are optional, reached only through package extensions (`[weakdeps]` + `[extensions]`). The core operates on generic inputs (image paths / data + a layout spec) and renders via the **SVG string-stitch backend, which is the default and lives in core with no heavy deps**. Extensions can only add methods to functions the core already owns, so the verbs and backend selectors are declared/exported in core first.
-   - `ext/MontageCairoMakieExt.jl` — unlocks the Makie backend, `tableau`, and movies (loaded when the user does `using CairoMakie`).
-   - `ext/MontagePhysiCellModelManagerExt.jl` — adds `::Type{Simulation}` convenience methods that resolve sim ids to files/data via PCMM.
-3. **Movies and `tableau` are built with CairoMakie** (`Makie.record`, `GridLayout`, `Colorbar`) — available only once the CairoMakie extension is loaded. Backend is chosen via a **`backend` kwarg** (default `:svg`); requesting `:makie` (or calling a Makie-only feature) without CairoMakie loaded errors with a message telling the user to `using CairoMakie`.
+   Four extensions (all `[weakdeps]`, never `[deps]`):
+   - `ext/MontageMovieExt.jl` (`Rsvg`/`Cairo`/`FFMPEG`) — renders montage-of-movies (`record`) via the SVG-frame + FFMPEG path.
+   - `ext/MontagePhysiCellModelManagerExt.jl` (`PCMM`) — `montage`/`storyboard` `::Type{Simulation}` convenience (resolve sim ids to output files).
+   - `ext/MontageCairoMakieExt.jl` (`CairoMakie`) — the data-agnostic `tableau` layout engine + public generic `tableau(focal, satellites)`.
+   - `ext/MontageCairoMakiePCMMExt.jl` (`CairoMakie` + `PCMM`) — `tableau(::Type{Simulation}, …)`, still + movie (`Makie.record`).
+3. **`tableau` is CairoMakie-only** (`GridLayout`, `Colorbar`, `Makie.record` for movies) — available once `using CairoMakie`, else the fallback errors helpfully. **Montage-of-movies** uses the SVG-frame + FFMPEG `record` path, **not** CairoMakie. A `:makie` backend for `montage`/`storyboard` was considered and **declined** (SVG-only); the `backend` kwarg + `MakieBackend` selector still exist as vestigial scaffolding on those verbs.
 
 ## Relationship to PCMM
 PCMM is an optional, weak dependency reached only through the extension. PCMM uses Plots.jl + RecipesBase, **not** Makie — do not try to reuse PCMM's Plots recipes. Montage brings its own CairoMakie stack independently. When working in this repo, do **not** modify PCMM files; treat PCMM's data primitives (`PhysiCellSnapshot`, `PhysiCellSequence`, etc.) as a read-only boundary.
@@ -115,6 +118,6 @@ A feature is complete when **all** are true:
 Architecture decisions are resolved (2026-07-21) — see [PRD.md](PRD.md) "Decisions". **All three verbs are built:** `montage` (SVG static + movie-of-movies via `record`), `storyboard` (static filmstrip), and `tableau` (CairoMakie: focal cell-scatter + satellite substrate heatmaps). Extensions: `MontageMovieExt`, `MontagePhysiCellModelManagerExt`, `MontageCairoMakieExt`, `MontageCairoMakiePCMMExt`. See [README.md](README.md) Implementation Status. Remaining:
 
 - **Handoff doc → PCMM session** ([PCMM_DOCS_HANDOFF.md](PCMM_DOCS_HANDOFF.md), untracked/excluded): all three verb sections ready. The maintainer carries it to a PCMM-repo session to add the "Visualizing simulations with Montage" page (PCMM is a read-only boundary here). See [progress.md](progress.md) "Docs locality".
-- **`tableau` movies** — animate a tableau over `time` via `Makie.record` (in `MontageCairoMakieExt`/`MontageCairoMakiePCMMExt`).
 - **Time-based frame alignment** — movie follow-up: align by simulation time (nearest snapshot on a common grid), not just index.
+- **`dashboard` (name reserved — future verb).** A *live-updating / interactive* counterpart to `tableau`: the same Observable-driven layout engine (`_tableauFigure`), but driven by a live source rather than a fixed frame loop — e.g. polling a running simulation's output as snapshots land (a monitor), or interactive controls like a time slider (likely an interactive Makie backend: GLMakie/WGLMakie). Keep the split clean: `tableau` = the composed static/movie figure; `dashboard` = the live view. (Decided 2026-07-23 — resolves the `tableau` vs. `dashboard` naming question by making them *different* verbs.)
 - **(Decided against)** a `:makie` backend for `montage`/`storyboard` — no added value; those verbs stay SVG-only.

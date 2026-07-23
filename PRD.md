@@ -78,7 +78,7 @@
 
 ---
 
-## Feature: `tableau` — CairoMakie backend **(in progress, design resolved 2026-07-22)**
+## Feature: `tableau` — CairoMakie backend **(implemented incl. movies, 2026-07-23)**
 
 **One-line description:** Compose a single simulation state as a focal panel with satellite panels arranged around it.
 
@@ -88,7 +88,7 @@
 - **Auto-ring layout:** focal panel centered; satellites auto-placed around it (a grid ring), count-dependent. Explicit positions are a later option.
 - **Focal = cell scatter re-plotted from data** (`scatter!`, colored by cell type), in the same axis coordinates as the satellite heatmaps → a true shared spatial extent.
 - **Satellites = one `heatmap!` + `Colorbar` per substrate** (voxel grid reshaped from the `substrates` DataFrame).
-- **CairoMakie-only, data-driven** — no SVG stitching. Static for v1 (tableau *movies* via `Makie.record` are a deferred follow-up). A `:makie` backend for `montage`/`storyboard` was considered and **declined** — no added value; those verbs stay SVG-only.
+- **CairoMakie-only, data-driven** — no SVG stitching. Static **and animated** (a movie animates the whole scene over a snapshot sequence via `Makie.record`, decided by the `index` value). A `:makie` backend for `montage`/`storyboard` was considered and **declined** — no added value; those verbs stay SVG-only.
 
 **Architecture — two extensions (composed); the data-agnostic work lives in the CairoMakie ext:**
 - `MontageCairoMakieExt` (weakdep `CairoMakie`): the **public generic `tableau(focal, satellites; …)`** — `focal`/`satellites` are axis callbacks; it owns everything data-agnostic: `Figure`/`GridLayout`, center focal + auto-ring satellites (`_ringSlots`), shared axes, `Colorbar`s, legend placement (`_placeLegend!`), and output-writing. (`_tableauFigure` is a private layout helper here.)
@@ -97,10 +97,11 @@
 
 **API:**
 - Generic: `tableau(focal, satellites; focal_title, satellite_titles, colorbar_labels, xlims, ylims, legend, size, output="tableau.png", overwrite)` — data-agnostic, callback-based.
-- PhysiCell: `tableau(::Type{Simulation}, sim_id; time=:final, substrates=<all>, colormap=:viridis, markersize, legend=:auto, size, output=<dataDir()/outputs/tableau.png>, overwrite=false)`. `time` is a single `PhysiCellSnapshot` selector (`:final`/`:initial`/`Integer`). Writes by default (raster `.png`; CairoMakie also does `.svg`/`.pdf`), `output=nothing` returns the Makie `Figure`, overwrite guard. `legend` places the cell-type legend (`:auto` → an empty grid cell off the plot; a corner `Symbol`; a `(row,col)`; or `nothing`). Also accepts a `Simulation`/`PCMMOutput{Simulation}` object.
+- PhysiCell: `tableau(::Type{Simulation}, sim_id; index=:final, substrates=<all>, colormap=:viridis, markersize, legend=:auto, size, framerate=15, output=<dataDir()/outputs/tableau.png|.mp4>, overwrite=false)`. The **`index` value decides still vs. movie** (same as `montage`): `:final`/`:initial`/`Integer` → a still; `:all` or a vector/range of snapshot indices → a **movie** (the scene animated over those snapshots via `Makie.record`; colorranges fixed globally per substrate for a stable colorscale; the cell-type set is the union across frames). Writes by default (`.png` still / `.mp4` movie), overwrite guard; for a still `output=nothing` returns the Makie `Figure` (a movie needs a path). `legend` places the cell-type legend (`:auto` → an empty grid cell off the plot; a corner `Symbol`; a `(row,col)`; or `nothing`). Also accepts a `Simulation`/`PCMMOutput{Simulation}` object.
 
 **Acceptance criteria:**
-- `tableau(Simulation, sim_id)` renders the cell scatter centered with one heatmap+colorbar per substrate around it, on a shared spatial extent, and writes a `.png`. (Verified manually on the dev project.)
+- `tableau(Simulation, sim_id)` renders the cell scatter centered with one heatmap+colorbar per substrate around it, on a shared spatial extent, and writes a `.png`. ✓ verified on the dev project.
+- `tableau(Simulation, sim_id; index=:all)` writes an `.mp4` animating the scene over the snapshots, with a stable colorscale and legend and an animated `t = …` title. ✓ verified on the dev project.
 
 ---
 
@@ -117,7 +118,7 @@
 - **API:** the **panel content decides still vs. movie** — if any panel's content is a frame sequence, `montage` renders a movie **in one call** (writing `.mp4`), auto-picking the output extension. `output=nothing` returns a [`MontageSpec`](@ref) instead, which `record(spec, path; framerate, scale, overwrite)` animates (the underlying renderer + an escape hatch for finer control). No per-verb `movie=` kwarg or `_movie`/`_gif` variants.
 - **Two rendering paths:**
   - **SVG-frame path (default, Option A):** for each timepoint, compose the montage SVG of that timepoint's frames via the core `_svgMontage`, rasterize (Rsvg + Cairo), and encode the PNG sequence with FFMPEG. Preserves exact PhysiCell styling; reuses the SVG backend; no CairoMakie. Lives in `ext/MontageMovieExt.jl` (weakdeps `Rsvg`, `Cairo`, `FFMPEG`). **This is the path used for the montage-of-movies feature.**
-  - **CairoMakie path (later):** `Makie.record` for `tableau` and true data-driven/heatmap movies.
+  - **CairoMakie path:** `Makie.record` for `tableau` movies (data-driven; scene animated over a snapshot sequence). Implemented in `MontageCairoMakiePCMMExt`.
 - **`MontageSpec`** (core type): a grid of frame-sequence panels + a common frame count + layout params. `montage` builds it internally (and returns it when `output=nothing`); `_svgFrame(spec, t)` renders one timepoint's montage SVG.
 - **Frame alignment across sims:** by **frame index**, truncated to the shortest sequence, with a warning when lengths differ. Time-based alignment (nearest snapshot on a common time grid) is a **planned follow-up** — see the to-do in progress.md.
 
