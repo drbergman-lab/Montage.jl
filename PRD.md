@@ -134,7 +134,9 @@
 
 **Priority:** Must-have (this is how the tool is actually used in practice).
 
-**Status:** `montage(::Type{Simulation}, …)` **implemented (2026-07-21)** and `storyboard(::Type{Simulation}, sim_id; …)` **implemented (2026-07-22)**. `tableau` method pending that verb.
+**Planned relocation:** these PCMM-facing extensions (`MontagePhysiCellModelManagerExt`, `MontageCairoMakiePCMMExt`) are slated to **move into a new `PhysiCellMontage.jl` package** so folder-path (non-PCMM) PhysiCell users are supported too, leaving Montage.jl PhysiCell-free. This is a breaking change to Montage's surface — settle it before registering. See [CLAUDE.md](CLAUDE.md) To-dos "Planned restructure".
+
+**Status:** `montage(::Type{Simulation}, …)` **implemented (2026-07-21)**, `storyboard(::Type{Simulation}, sim_id; …)` **implemented (2026-07-22)**, and `tableau(::Type{Simulation}, sim_id; …)` incl. movies **implemented (2026-07-23)**.
 
 **Behavioral specification:**
 - Ships as `ext/MontagePhysiCellModelManagerExt.jl`, wired via `[weakdeps]` + `[extensions]` in `Project.toml`. Triggered by **PhysiCellModelManager** (the added knowledge is the PhysiCell output-file convention), though `Simulation`/`simulationIDs`/`trialFolder`/`dataDir` are ModelManager's, re-exported by PCMM.
