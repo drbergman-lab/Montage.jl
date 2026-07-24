@@ -134,7 +134,7 @@
 
 **Priority:** Must-have (this is how the tool is actually used in practice).
 
-**Planned relocation:** these PCMM-facing extensions (`MontagePhysiCellModelManagerExt`, `MontageCairoMakiePCMMExt`) are slated to **move into a new `PhysiCellMontage.jl` package** so folder-path (non-PCMM) PhysiCell users are supported too, leaving Montage.jl PhysiCell-free. This is a breaking change to Montage's surface — settle it before registering. See [CLAUDE.md](CLAUDE.md) To-dos "Planned restructure".
+**Planned refactor (stays in Montage):** add a **folder-path front door** so non-PCMM PhysiCell users are supported — a `MontagePhysiCellOutputExt` (weakdep `PhysiCellOutput.jl`) exposing `montage(PhysiCellOutput(path))` etc. The PCMM id door (`MontagePhysiCellModelManagerExt`, `MontageCairoMakiePCMMExt`) becomes a **thin adapter that delegates** to the folder-path methods (id→folder→`PhysiCellOutput`), so both front doors share one code path and everyone still types `using Montage`. `montage(::Type{Simulation})` **stays in Montage** — not a breaking change. See [CLAUDE.md](CLAUDE.md) To-dos "PhysiCell support stays in Montage".
 
 **Status:** `montage(::Type{Simulation}, …)` **implemented (2026-07-21)**, `storyboard(::Type{Simulation}, sim_id; …)` **implemented (2026-07-22)**, and `tableau(::Type{Simulation}, sim_id; …)` incl. movies **implemented (2026-07-23)**.
 
