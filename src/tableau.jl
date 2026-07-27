@@ -24,5 +24,5 @@ only once the CairoMakie extension is loaded (`using CairoMakie`); without it, c
   from a simulation's cells + substrates.
 """
 tableau(args...; kwargs...) = error(
-    "`tableau` needs the CairoMakie extension (and PhysiCellModelManager for simulations) — " *
-    "run `using CairoMakie, PhysiCellModelManager`")
+    "`tableau` needs the CairoMakie extension (and PhysiCellOutput or PhysiCellModelManager for simulations) — " *
+    "run `using CairoMakie, PhysiCellOutput` or `using CairoMakie, PhysiCellModelManager` first to get it.")

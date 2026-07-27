@@ -8,19 +8,23 @@ Cairo = "159f3aea-2a34-519c-b102-8c37f9878175"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 FFMPEG = "c87230d0-a227-11e9-1b43-d7ebe4e7570a"
 PhysiCellModelManager = "7582d1aa-5e58-4d65-a123-4418a61a2644"
+PhysiCellOutput = "61ac5edc-a73d-4441-b68d-d9b510422d04"
 Rsvg = "c4c386cf-5103-5370-be45-f3a111cca3b8"
 
 [extensions]
 MontageCairoMakieExt = "CairoMakie"
-MontageCairoMakiePCMMExt = ["CairoMakie", "PhysiCellModelManager"]
+MontageCairoMakiePCMMExt = ["CairoMakie", "PhysiCellModelManager", "PhysiCellOutput"]
+MontageCairoMakiePhysiCellOutputExt = ["CairoMakie", "PhysiCellOutput"]
 MontageMovieExt = ["Rsvg", "Cairo", "FFMPEG"]
-MontagePhysiCellModelManagerExt = "PhysiCellModelManager"
+MontagePhysiCellModelManagerExt = ["PhysiCellModelManager", "PhysiCellOutput"]
+MontagePhysiCellOutputExt = "PhysiCellOutput"
 
 [compat]
 Cairo = "1.1.1"
 CairoMakie = "0.15"
 FFMPEG = "0.4.5"
 PhysiCellModelManager = "0.3"
+PhysiCellOutput = "0.1"
 Rsvg = "1.1.0"
 julia = "1.10.10"
 
