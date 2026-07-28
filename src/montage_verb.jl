@@ -105,7 +105,7 @@ core write (`montage`, `record`).
 """
 _assertWritable(path, overwrite) =
     (!overwrite && isfile(String(path))) &&
-        error("output $path already exists; pass `overwrite=true` to replace it")
+        error("output $path already exists; pass `overwrite=true` to replace it, or `output=<path>` to write elsewhere")
 
 # --- other backends (e.g. :makie, added by MontageCairoMakieExt) ---
 # Catch-all fallback on the ABSTRACT type so an extension can add a concrete
