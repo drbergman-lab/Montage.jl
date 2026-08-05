@@ -137,6 +137,11 @@ end
             existing = joinpath(mktempdir(), "there.mp4"); touch(existing)
             guard_err = try; record(spec, existing); catch e; sprint(showerror, e); end
             @test occursin("already exists", guard_err)
+            # the message must stay *actionable* — it names both ways out. Asserting only
+            # "already exists" would pass for a bare message too, leaving the hint unpinned.
+            @test occursin("overwrite=true", guard_err)
+            @test occursin("output=", guard_err)
+            @test occursin(existing, guard_err)              # and says which path
         end
     end
 
@@ -199,27 +204,20 @@ end
         @test Montage._slotRC(5, 3) == (2, 2)
     end
 
-    @testset "legend — _normalizeLegend" begin
-        @test Montage._normalizeLegend(nothing, nothing) == (nothing, :auto)
-        @test Montage._normalizeLegend(false, "leg.svg") == (nothing, :auto)
-        @test Montage._normalizeLegend("a.svg", nothing) == ("a.svg", :auto)
-        @test Montage._normalizeLegend(:auto, "leg.svg") == ("leg.svg", :auto)
-        @test Montage._normalizeLegend(:auto, nothing) == (nothing, :auto)  # none resolved
-        # a discovery that found *nothing* must also mean no legend, not an empty entry list —
-        # an empty list would reserve a band with nothing in it
-        @test Montage._normalizeLegend(:auto, Tuple{String,String}[]) == (nothing, :auto)
-        @test_throws ErrorException Montage._normalizeLegend(:bottom, Tuple{String,String}[])
-        @test Montage._normalizeLegend(:bottom, "leg.svg") == ("leg.svg", :bottom)
-        @test Montage._normalizeLegend((2, 1), "leg.svg") == ("leg.svg", (2, 1))
-        # the (row, col, span) form _svgGrid documents must actually reach it
-        @test Montage._normalizeLegend((2, 1, 2), "leg.svg") == ("leg.svg", (2, 1, 2))
-        # drawn entries pass through; an empty entry list means no legend
+    @testset "legend — _normalizeLegend says only *what*" begin
+        # content only; placement is the orthogonal `legend_position`
+        @test Montage._normalizeLegend(nothing) === nothing
+        @test Montage._normalizeLegend(false) === nothing
+        @test Montage._normalizeLegend("a.svg") == "a.svg"
         ents = [("a", "red")]
-        @test Montage._normalizeLegend(ents, nothing) == (ents, :auto)
-        @test Montage._normalizeLegend(Tuple{String,String}[], nothing) == (nothing, :auto)
-        # a placement with nothing to place, and an unknown spelling
-        @test_throws ErrorException Montage._normalizeLegend(:bottom, nothing)
-        @test_throws ErrorException Montage._normalizeLegend(:sideways, "leg.svg")
+        @test Montage._normalizeLegend(ents) == ents
+        @test Montage._normalizeLegend(Tuple{String,String}[]) === nothing   # empty ⇒ none
+        # :auto means "discover", which only the PhysiCell extensions can do
+        @test Montage._normalizeLegend(:auto) === nothing
+        # a placement passed as content is a mistake, and the error points at legend_position
+        err = try; Montage._normalizeLegend(:bottom); catch e; sprint(showerror, e); end
+        @test occursin("legend_position", err)
+        @test_throws ErrorException Montage._normalizeLegend(:sideways)
     end
 
     @testset "legend — drawn entries" begin
@@ -264,7 +262,7 @@ end
             @test occursin("width=\"948.0\"", svg)
             @test occursin("height=\"373.4\"", svg)
             @test occursin(">nk<", svg)
-            @test storyboard(paths; legend=:bottom, legend_file=entries, output=nothing) == svg
+            @test storyboard(paths; legend=entries, legend_position=:bottom, output=nothing) == svg
         end
     end
 
@@ -292,7 +290,7 @@ end
             base = montage(paths; output=nothing)
             @test montage(paths; legend=nothing, output=nothing) == base
             @test montage(paths; legend=false, output=nothing) == base
-            @test montage(paths; legend=:auto, legend_file=nothing, output=nothing) == base
+            @test montage(paths; legend=:auto, output=nothing) == base   # nothing to discover
         end
     end
 
@@ -304,7 +302,7 @@ end
             @test occursin("height=\"416.0\"", svg)          # 324 + 80 + 12
             @test count("<svg", svg) == 5                      # nested, unlike a drawn legend
             # :top puts it above and shifts the panels down by 80 + 12
-            top = storyboard(paths; legend=:top, legend_file=SVG_LEGEND, output=nothing)
+            top = storyboard(paths; legend=SVG_LEGEND, legend_position=:top, output=nothing)
             @test occursin("x=\"274.0\" y=\"12.0\"", top)
             @test occursin("x=\"12.0\" y=\"104.0\"", top)
         end
@@ -318,7 +316,7 @@ end
             @test occursin("width=\"612.0\" height=\"110.5\"", svg)   # shrunk to the band width
             @test occursin("height=\"1426.5\"", svg)                    # 1304 + 110.5 + 12
             # an explicit cell overrides the floor and squeezes it in
-            forced = montage(panels; legend=(2, 2), legend_file=SVG_LEGEND_WIDE, output=nothing)
+            forced = montage(panels; legend=SVG_LEGEND_WIDE, legend_position=(2, 2), output=nothing)
             @test occursin("height=\"1304.0\"", forced)
             @test occursin("width=\"300.0\"", forced)
         end
@@ -327,16 +325,16 @@ end
     @testset "legend — explicit cell grows the grid; collisions warn" begin
         withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
             # (2,1) is past the single row, so the grid gains a row: 2*300 + 3*12 = 636
-            svg = storyboard(paths; legend=(2, 1), legend_file=SVG_LEGEND, output=nothing)
+            svg = storyboard(paths; legend=SVG_LEGEND, legend_position=(2, 1), output=nothing)
             @test occursin("height=\"636.0\"", svg)
             # the 300px cell is narrower than the 400px legend, so it shrinks to fit
             @test occursin("x=\"12.0\" y=\"444.0\" width=\"300.0\" height=\"60.0\"", svg)
             # a cell already holding a panel warns
-            @test_logs (:warn,) match_mode=:any storyboard(paths; legend=(1, 1),
-                                                           legend_file=SVG_LEGEND, output=nothing)
+            @test_logs (:warn,) match_mode=:any storyboard(paths; legend=SVG_LEGEND,
+                                                           legend_position=(1, 1), output=nothing)
             # off-grid columns are an error
-            @test_throws ErrorException storyboard(paths; legend=(1, 9),
-                                                  legend_file=SVG_LEGEND, output=nothing)
+            @test_throws ErrorException storyboard(paths; legend=SVG_LEGEND,
+                                                  legend_position=(1, 9), output=nothing)
         end
     end
 

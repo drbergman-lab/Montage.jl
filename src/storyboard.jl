@@ -6,7 +6,7 @@
 
 """
     storyboard(panels; backend=:svg, ncols=length(panels), panel_width=300,
-               title_height=34, pad=12, legend=nothing, legend_file=nothing,
+               title_height=34, pad=12, legend=nothing, legend_position=:auto,
                legend_font_size=22, output="storyboard.svg", overwrite=false)
 
 Stitch an **ordered** sequence of `panels` into a single static figure — the verb for
@@ -25,9 +25,9 @@ to wrap the strip into that many columns while preserving time order.
 # Keyword Arguments
 - `backend::Symbol=:svg`: `:svg` (default) or `:makie` (requires `using CairoMakie`).
 - `ncols::Integer=length(panels)`: columns in the strip; the default is a single row.
-- `panel_width`, `title_height`, `pad`, `legend`, `legend_file`, `legend_font_size`: as in
-  [`montage`](@ref). A single-row strip has no spare grid cell, so an `:auto` legend lands in a
-  full-width band below the frames.
+- `panel_width`, `title_height`, `pad`, `legend`, `legend_position`, `legend_font_size`: as in
+  [`montage`](@ref). A single-row strip has no spare grid cell, so `legend_position=:auto` lands
+  the legend in a full-width band below the frames.
 - `output::Union{Nothing,AbstractString}="storyboard.svg"`: where to write the SVG (cwd by
   default); errors if it exists unless `overwrite=true`. `output=nothing` returns the SVG
   string without writing.
@@ -47,12 +47,12 @@ storyboard([Panel("t0.svg"; title="t = 0"),   Panel("t1.svg"; title="t = 120"),
 """
 function storyboard(panels; backend::Symbol=:svg, ncols::Integer=length(panels),
                     panel_width::Real=300, title_height::Real=34, pad::Real=12,
-                    legend=nothing, legend_file=nothing, legend_font_size::Real=_TITLE_FONT_SIZE,
+                    legend=nothing, legend_position=:auto, legend_font_size::Real=_TITLE_FONT_SIZE,
                     output::Union{Nothing,AbstractString}="storyboard.svg", overwrite::Bool=false)
     ps = _asPanels(panels)
     any(_isAnimated, ps) &&
         error("storyboard is static — each panel must be a single image, not a frame sequence; use `montage` for movies")
-    legend_svg, legend_position = _normalizeLegend(legend, legend_file)
+    legend_svg = _normalizeLegend(legend)
     return _storyboard(montageBackend(backend), ps; ncols, panel_width, title_height, pad,
                        legend_svg, legend_position, legend_font_size, output, overwrite)
 end

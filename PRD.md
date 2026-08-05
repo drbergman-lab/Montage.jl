@@ -80,7 +80,7 @@
 
 ## Feature: Cell-type legend for `montage` / `storyboard` — **implemented 2026-08-05**
 
-**One-line description:** Draw a cell-type legend alongside a stitched-SVG composition, built from the cell types the composition actually shows.
+**One-line description:** Draw a cell-type legend alongside a stitched-SVG composition, built from the cell types the run's config defines.
 
 **Priority:** Should-have (a montage of colored cells is unreadable without a key).
 
@@ -93,16 +93,24 @@ Two consequences worth stating:
 Row order follows the config's own cell-type order.
 
 **Behavioral specification (core):**
-- `storyboard(panels; backend=:svg, ncols=length(panels), panel_width=300, title_height=34, pad=12, output="storyboard.svg", overwrite=false)`.
-- Panels are an **ordered** sequence; laid out row-major, defaulting to a **single row** (`ncols = n`). `ncols` wraps into a grid while preserving time order.
-- Each panel's title is exposed (where timestamps go). Frame-sequence (animated) panels are rejected — storyboard is static.
-- Shares the `_svgGrid(panels; ncols, …)` builder with `montage`. Writes by default (`storyboard.svg`), `output=nothing` returns the string, same overwrite guard.
+- `_svgGrid` gains `legend_svg` / `legend_position` / `legend_font_size`; the verbs expose `legend` (normalized by `_normalizeLegend`), `legend_position`, and `legend_font_size`.
+- **`legend` and `legend_position` are orthogonal**: `legend` says *what* (`nothing`/`false`, `(label, color)` entries, an SVG path/string, or `:auto` = "discover from the run"), `legend_position` says *where* (`:auto`, `:bottom`, `:top`, `(row, col)`, `(row, col, span)`). Any content takes any placement. An earlier design overloaded `legend` for both and added a `legend_file` escape, which made the natural case — own entries *and* a chosen placement — expressible only as `legend=:bottom, legend_file=[…]`, i.e. entries inside something named "file". Empty entries mean no legend.
+- **Drawn legends** (`_svgLegend`) emit **flat top-level `<circle>` and `<text>`** — deliberately not a nested `<svg>`, since nested SVGs are what PowerPoint and Illustrator handle worst and hand-editability is a main reason the output is SVG. They are authored at `legend_font_size` (the title size by default) and **wrap** to fit the space given, never scaling the text. So there is no scale factor and no minimum-legibility problem. The layout is run against the width the legend was *sized* against, never its own used width — re-wrapping at exactly that width lands the final entry on a float equality boundary and can push it onto a row the reserved band has no height for.
+- **External legend SVGs** are nested at natural size, shrunk only if they will not fit.
+- **`:auto` placement:** the free cells trailing the last row, spanning the whole run, costing *no* space; else a full-width band below. Always safe for a drawn legend (it wraps); an external SVG takes the run only if it is at least 0.7 of the run width, else bands.
+- Emitted legend geometry is rounded (`_px`); **with `legend_svg === nothing` output is byte-identical** to a grid built with no legend support.
+- **Movies:** `MontageSpec` carries the legend so every frame draws the same one. A five-argument constructor preserves the old arity (no legend).
 
-**PCMM extension** (`storyboard(::Type{Simulation}, sim_id; …)`): operates on **one** simulation. Timepoints via `index` (a vector of `Integer` snapshot indices and/or `:initial`/`:final`) **or** `n_snapshots` (default 4: evenly-spaced spanning the run, including endpoints). `n_snapshots` defaults to `length(index)` when `index` is given; passing both with different lengths errors. Frame titles are the snapshots' simulation times via a `title` function (default `t -> "t = $t"`). Writes under `dataDir()/outputs/storyboard.svg` by default.
+**PhysiCellOutput extension:** `legend=:auto` is the **default**, resolved by `_resolveAuto` before the core is called, so `legend_position` stays free for the user. `Montage._cellTypeLegend` reads each folder's `legend.svg` (`_legendRows`) and unions across folders, so a sweep that mixed configs still explains every type any panel can contain — verified on the dev project, where 52 sims define 4 cell types and 12 define a 5th (`filler`). Folders with no `legend.svg` contribute nothing; if none has one, there is no legend. PCMM inherits this unchanged.
+
+`Montage._cellTypeLegend` is a **core-declared hook with no methods**, implemented in the PhysiCellOutput extension, so the CairoMakie extensions can share it (extensions cannot `using` one another). It has no core fallback on purpose: an untyped fallback would make the extension's identically-signed method an *overwrite*, which Julia rejects during precompilation.
 
 **Acceptance criteria:**
-- `storyboard(Simulation, sim_id)` writes a single-row filmstrip of 4 evenly-spaced, timestamp-titled frames. ✓ verified on the dev project.
-- Core works with no PCMM, given hand-written ordered panels.
+- `storyboard(seq)` puts a compact legend band below the filmstrip, text matching the titles. ✓ verified on the dev project (one 37.4 px row, i.e. 49.4 px total — a third of what nesting `legend.svg` cost) and rendered.
+- A montage with a free cell run places the legend there at **no size cost**, wrapping as needed. ✓ verified (3-sim montage, dimensions identical with and without).
+- Entries are the config's cell types, unioned across panels. ✓ verified: a 64-sim montage across mixed configs picks up `filler`, which only 12 sims define.
+- A movie's legend is complete and identical in every frame, built without reading a single snapshot. ✓ verified over 121 frames.
+- `legend=nothing` is byte-identical to the pre-feature output. ✓ core test.
 
 ---
 

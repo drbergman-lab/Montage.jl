@@ -60,15 +60,18 @@ _legendRows(text::AbstractString) =
     [(String(m.captures[2]), String(m.captures[1])) for m in eachmatch(_LEGEND_ROW_RE, text)]
 
 """
-    _legendEntries(folders) -> Vector{Tuple{String,String}}
+    Montage._cellTypeLegend(folders) -> Vector{Tuple{String,String}}
 
 The `(label, colour)` entries for a composition, from each folder's `legend.svg`, unioned across
 folders so a sweep that mixed configs still explains every cell type any panel can contain. Order
 follows the config (first folder's order, with later folders' extra types appended).
 
 Empty when no folder has a `legend.svg`, which the core then treats as "no legend".
+
+This implements the core-declared hook so the CairoMakie extensions can reach it too — `tableau`
+colours its cells from the same source, keeping a tableau and a montage of one run consistent.
 """
-function _legendEntries(folders)
+function Montage._cellTypeLegend(folders)
     entries = Tuple{String,String}[]
     seen = Set{String}()
     for folder in folders
@@ -80,6 +83,16 @@ function _legendEntries(folders)
     end
     return entries
 end
+
+"""
+    _resolveAuto(legend, folders) -> legend
+
+Turn `legend=:auto` into real `(label, colour)` entries from the runs' `legend.svg`. Anything else
+— explicit entries, a path, or `nothing` — passes straight through, so a caller can override the
+content while still using `legend_position` to place it.
+"""
+_resolveAuto(legend, folders) =
+    legend === :auto ? Montage._cellTypeLegend(folders) : legend
 
 # --- montage -----------------------------------------------------------------------------
 
@@ -98,20 +111,20 @@ A **cell-type legend is included by default** (`legend=:auto`), built from each 
 `output/legend.svg` — which lists every cell type the *config* defines, with PhysiCell's own
 colours — and drawn as flat circles and labels. It goes in the free cells trailing the last row
 when the grid has some (costing no space), else in a band below. Pass `legend=nothing` to suppress it,
-`legend=:bottom`/`:top`/`(row, col)` to place it explicitly, `legend=[("label", "red"), …]` to
-give your own entries, or `legend="path.svg"` to nest a hand-made legend file. In a movie the
-legend is drawn into every frame.
+`legend=[("label", "red"), …]` to give your own entries, or `legend="path.svg"` to nest a hand-made
+file — and `legend_position` (`:auto`, `:bottom`, `:top`, `(row, col)`) to place whichever of those
+you chose. In a movie the legend is drawn into every frame.
 
 All other keywords pass through to the core verb (`output`, `overwrite`, `panel_width`,
 `framerate`, …).
 """
 function Montage.montage(seqs::AbstractVector{<:PhysiCellSequence};
                          index = :final, title = seq -> _folderLabel(seq.folder),
-                         legend = :auto, legend_file = _legendEntries(s.folder for s in seqs),
-                         kwargs...)
+                         legend = :auto, kwargs...)
+    legend = _resolveAuto(legend, (s.folder for s in seqs))
     if _isMovieIndex(index)
         panels = [Panel(_frameSVGs(seq, index); title = title(seq)) for seq in seqs]
-        return montage(panels; legend, legend_file, kwargs...)
+        return montage(panels; legend, kwargs...)
     end
     fname = _stateFile(index)
     panels = Panel[]
@@ -121,7 +134,7 @@ function Montage.montage(seqs::AbstractVector{<:PhysiCellSequence};
             @warn "no $fname in $(seq.folder); skipping"
     end
     isempty(panels) && error("no $fname found in the given folders")
-    return montage(panels; legend, legend_file, kwargs...)
+    return montage(panels; legend, kwargs...)
 end
 
 Montage.montage(seq::PhysiCellSequence; kwargs...) = montage([seq]; kwargs...)
@@ -129,11 +142,10 @@ Montage.montage(seq::PhysiCellSequence; kwargs...) = montage([seq]; kwargs...)
 # A vector of already-selected states → a still grid (one panel per snapshot).
 function Montage.montage(snaps::AbstractVector{<:PhysiCellSnapshot};
                          title = snap -> _folderLabel(snap.folder),
-                         legend = :auto,
-                         legend_file = _legendEntries(s.folder for s in snaps),
-                         kwargs...)
+                         legend = :auto, kwargs...)
+    legend = _resolveAuto(legend, (s.folder for s in snaps))
     panels = [Panel(_stateSVG(s.folder, s.index); title = title(s)) for s in snaps]
-    return montage(panels; legend, legend_file, kwargs...)
+    return montage(panels; legend, kwargs...)
 end
 Montage.montage(snap::PhysiCellSnapshot; kwargs...) = montage([snap]; kwargs...)
 
@@ -181,14 +193,13 @@ function Montage.storyboard(seq::PhysiCellSequence;
                             n_snapshots::Integer = isnothing(index) ? 4 : length(index),
                             title = t -> "t = $t",
                             legend = :auto,
-                            legend_file = _legendEntries((seq.folder,)),
                             ncols::Union{Nothing,Integer} = nothing, kwargs...)
     isnothing(index) || n_snapshots == length(index) ||
         error("pass either `index` or `n_snapshots`, not both with different lengths (got n_snapshots=$n_snapshots, length(index)=$(length(index)))")
     snaps = isnothing(index) ? _evenSnapshots(seq, n_snapshots) : [_snapshotFor(seq, sel) for sel in index]
     panels = [Panel(_stateSVG(s.folder, s.index); title = string(title(s.time))) for s in snaps]
     return storyboard(panels; ncols = something(ncols, length(panels)),
-                      legend, legend_file, kwargs...)
+                      legend = _resolveAuto(legend, (seq.folder,)), kwargs...)
 end
 
 end # module
