@@ -523,3 +523,69 @@ The `_assertWritable` message improved in `1b416f6` was **untested** — the ass
   six stills and three movies rendered and inspected; resolved colours read off the `Figure` to prove
   PhysiCell colours and filter-stability; legend placement measured (`:top` legend at cy=30.7 with
   panels at 95.4, `:bottom` at 397.7 with panels at 46.0, identical totals, own entries honoured).
+
+---
+
+## Session: cell filtering for `montage` / `storyboard` (2026-08-05)
+
+Branch `feature/svg-cell-filter` (stacked on `feature/tableau-cell-color`). To-do item 3 for the
+SVG verbs — Tier 1 of the plan's two-tier split.
+
+### The core seam
+Core gains exactly one generic thing and no PhysiCell or colour knowledge:
+`Panel(content; title, transform=identity)`, a function `SVG text -> SVG text` applied in
+`_svgGrid` just before placement. Per the user's steer, there is **no `colorby`/`cell_types`/
+colormap in core** — the seam *is* the "users can edit their own SVGs" affordance, made ergonomic.
+
+Per-`Panel` rather than a verb kwarg, because a montage across simulations needs a different
+closure per panel (each bound to that run's data). Filtering happens to be uniform; recolouring
+(Tier 2) is not.
+
+For movies, `transform` may be a `Vector` parallel to the frames (`_frameTransform` indexes it), so
+a per-timepoint edit is expressible; a single function applies to every frame.
+
+### Filtering needs no data at all
+PhysiCell tags every cell — `<g id="cell442" type="tumor_epi" dead="true">` — so `cell_types` and
+`include_dead` are just "drop the non-matching groups". Cell groups never nest, so a non-greedy
+match to the first `</g>` is exact, and requiring `id="cell…"` scopes the edit to the cells layer
+on its own (the `tissue` wrapper and `ECM` group have other ids; the time/agent text is not a `<g>`).
+
+Two details that make the output honest rather than merely filtered:
+- **The "N agents" caption is rewritten** to the number actually drawn. A figure captioned
+  `511 agents` while showing 200 of them would be wrong, and the count is free — we are already
+  visiting every group.
+- **The legend narrows to the kept types** (user's call). Worth being precise about why this is not
+  in tension with the config-driven legend: entries are deliberately *not* narrowed to what happens
+  to be visible in a snapshot (that is what keeps one legend correct across a whole movie), but an
+  explicit `cell_types` filter is different — those cells were removed on purpose.
+
+### What Tier 1 no longer needs
+The plan budgeted `_filterLegendSVG`, rebuilding PhysiCell's `legend.svg` on its 65 px row pitch
+after filtering. Unnecessary: the legend is drawn from `(label, colour)` entries now, so narrowing
+it is a one-line `filter`.
+
+### Verification
+- Core suite **126/126**, dependency-free. Tests cover the seam itself: `identity` default,
+  `_frameTransform` vector indexing, a transform applied while stitching (including one panel
+  transformed and its neighbour untouched), explicit `identity` being byte-identical, a transform
+  that changes the intrinsic size correctly changing the layout, and per-frame transforms in a movie.
+- Real data (sim 1's `final.svg`, 511 cells / 29 dead): `["nk","caf"]` → 200, scalar `"nk"` → 100,
+  `include_dead=false` → 482, both → 234; captions track exactly; `tumor_epi` 263 → 234 under
+  `include_dead=false`, i.e. all 29 dead cells were tumour epithelium; scale bar, time text and
+  `tissue` group preserved; `_cellFilter(nothing, true) === identity`. Filtered storyboards rendered
+  and eyeballed — legend correctly shows only the kept two types.
+
+### Also fixed (user)
+`legend_font_size`'s default was `_TITLE_FONT_SIZE` in code but written as a literal `22` in three
+docstring spots, which would have silently lied if the constant changed. The docstrings now say
+`<title size>` (matching the existing `output=<auto: …>` convention) and describe the default rather
+than restating it. Same class of duplication: `title_y = y0 + 24` hardcoded a baseline offset
+derived from the font size — now `y0 + _TITLE_FONT_SIZE + 2`, which is byte-identical (22+2 == 24)
+and no longer drifts if the constant changes. The `_px` docstring's example also still referenced
+the font-ratio arithmetic deleted in branch 1; updated.
+
+### Note (visible in the rendered output, not addressed)
+With `include_dead=true` (the default) dead cells render **black** with no legend entry, since
+`legend.svg` has no dead row and the legend is config-driven. `include_dead=false` removes them, or
+an explicit `legend=[…, ("dead","black")]` supplies the key. Left alone deliberately — "dead" is a
+state, not a cell type.

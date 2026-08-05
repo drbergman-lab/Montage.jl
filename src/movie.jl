@@ -37,11 +37,12 @@ end
 
 Compose the montage SVG for timepoint `t` (1-based) by taking each panel's `t`-th frame
 and stitching them with the same grid logic as the static [`montage`](@ref). The spec's
-legend is drawn into every frame, so it stays put for the whole movie.
+legend is drawn into every frame, so it stays put for the whole movie. Each panel's `transform`
+comes along too — indexed by frame when it is a `Vector` (see [`Panel`](@ref)).
 """
 function _svgFrame(spec::MontageSpec, t::Integer)
     1 <= t <= spec.nframes || throw(BoundsError(spec, t))
-    frame = [Panel(p.content[t], p.title) for p in spec.panels]
+    frame = [Panel(p.content[t], p.title, _frameTransform(p.transform, t)) for p in spec.panels]
     return _svgGrid(frame; panel_width=spec.panel_width,
                     title_height=spec.title_height, pad=spec.pad,
                     legend_svg=spec.legend_svg, legend_position=spec.legend_position,

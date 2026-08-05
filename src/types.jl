@@ -16,7 +16,7 @@ than in `svg_backend.jl` because `MontageSpec`'s old-arity constructor defaults 
 const _TITLE_FONT_SIZE = 22
 
 """
-    Panel(content; title="")
+    Panel(content; title="", transform=identity)
     Panel(content, title)
 
 One cell of a composition: some `content` plus an optional `title` drawn above it.
@@ -28,19 +28,39 @@ One cell of a composition: some `content` plus an optional `title` drawn above i
 - `title::AbstractString`: text drawn in a band above the content. An empty title
   (the default) means *no* title band is reserved for this panel — an all-untitled
   composition has no wasted vertical space.
+- `transform`: a function applied to this panel's SVG text before it is placed —
+  `SVG text -> SVG text`. The seam for editing a panel's contents without re-rendering it: the
+  PhysiCell extension uses it to drop or recolour cells. `identity` (the default) is free — it
+  returns the very same object, so the output is byte-identical to no transform at all.
+
+  For a movie panel, `transform` may instead be a **`Vector`** parallel to the frames, when the
+  edit differs per timepoint (a per-frame recolouring, say); `_svgFrame` then picks
+  `transform[t]`. A single function applies to every frame.
 
 # Examples
 ```julia
 Panel("output/final.svg"; title="Sim 1")
-Panel("output/final.svg")            # untitled
+Panel("output/final.svg")                                  # untitled
+Panel("output/final.svg"; transform = s -> replace(s, "red" => "blue"))
 ```
 """
 struct Panel
     content::Any
     title::String
+    transform::Any
 end
-Panel(content, title::AbstractString) = Panel(content, String(title))   # coerce SubString etc.
-Panel(content; title::AbstractString="") = Panel(content, String(title))
+Panel(content, title::AbstractString) = Panel(content, String(title), identity)   # coerce SubString etc.
+Panel(content; title::AbstractString="", transform=identity) =
+    Panel(content, String(title), transform)
+
+"""
+    _frameTransform(transform, t) -> Function
+
+The transform for frame `t`: a `Vector` of transforms is indexed, anything else (a plain function)
+is used as-is for every frame.
+"""
+_frameTransform(transform::AbstractVector, t::Integer) = transform[t]
+_frameTransform(transform, ::Integer) = transform
 
 """
     montageBackend(sym::Symbol) -> MontageBackend

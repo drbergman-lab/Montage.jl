@@ -12,7 +12,7 @@ _defaultOutput(panels) = any(_looksAnimated, panels) ? "montage.mp4" : "montage.
 
 """
     montage(panels; backend=:svg, panel_width=300, title_height=34, pad=12,
-            legend=nothing, legend_position=:auto, legend_font_size=22,
+            legend=nothing, legend_position=:auto, legend_font_size=<title size>,
             output=<auto: montage.svg | montage.mp4>, overwrite=false, framerate=15)
 
 Compose `panels` into a uniform titled grid — the verb for comparing like-for-like
@@ -44,8 +44,8 @@ FFMPEG`).
   layout has any, so the figure does not grow, else a full-width band below), `:bottom`, `:top`,
   or an explicit `(row, col)` / `(row, col, span)` cell. Independent of `legend`, so any content
   can take any placement.
-- `legend_font_size::Real=22`: text size for a drawn legend — the panel-title size by default, so
-  the two match. Drawn legends keep this size and **wrap** to fit the space; a nested SVG legend
+- `legend_font_size::Real`: text size for a drawn legend. Defaults to the panel-title size, so the
+  two match. Drawn legends keep this size and **wrap** to fit the space; a nested SVG legend
   instead sits at its natural size, shrunk only if it will not fit.
 - `output::Union{Nothing,AbstractString}`: where to write the result, in the current
   directory by default — `montage.svg` for a still image, `montage.mp4` for a movie.

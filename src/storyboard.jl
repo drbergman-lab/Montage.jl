@@ -7,7 +7,7 @@
 """
     storyboard(panels; backend=:svg, ncols=length(panels), panel_width=300,
                title_height=34, pad=12, legend=nothing, legend_position=:auto,
-               legend_font_size=22, output="storyboard.svg", overwrite=false)
+               legend_font_size=<title size>, output="storyboard.svg", overwrite=false)
 
 Stitch an **ordered** sequence of `panels` into a single static figure — the verb for
 showing one subject evolving over time (e.g. a simulation's snapshots left to right).
