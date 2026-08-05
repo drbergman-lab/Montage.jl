@@ -33,9 +33,16 @@ One cell of a composition: some `content` plus an optional `title` drawn above i
   PhysiCell extension uses it to drop or recolour cells. `identity` (the default) is free — it
   returns the very same object, so the output is byte-identical to no transform at all.
 
-  For a movie panel, `transform` may instead be a **`Vector`** parallel to the frames, when the
-  edit differs per timepoint (a per-frame recolouring, say); `_svgFrame` then picks
-  `transform[t]`. A single function applies to every frame.
+  A **movie** panel's content is a list of frames, and `transform` can match it one-for-one:
+
+  - one function — applied to every frame (e.g. "drop the `nk` cells", which does not depend on
+    time);
+  - a list of functions, the same length as the frames — then frame `t` is edited by
+    `transform[t]`.
+
+  The per-frame form exists because some edits *do* depend on the timepoint: colouring cells by a
+  data value needs each frame mapped from that snapshot's own values, so each frame needs its own
+  function.
 
 # Examples
 ```julia

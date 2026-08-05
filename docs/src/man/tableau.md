@@ -45,9 +45,39 @@ encoding a continuous value rather than discrete categories. The focal callback 
 its plot, the same convention the satellites follow, and there are no labelled series for a legend
 to read, so pass `legend=nothing` with it.
 
-Output follows the same rules as the other verbs (writes `tableau.png` by default — CairoMakie also
-renders `.svg`/`.pdf`; `output=nothing` returns the Makie `Figure`; `overwrite` guards existing
-files).
+Output follows the same rules as the other verbs (writes `tableau.png` by default;
+`output=nothing` returns the Makie `Figure`; `overwrite` guards existing files).
+
+## Vector output
+
+The file extension picks the format — CairoMakie renders `.png`, `.svg` and `.pdf`, so a
+publication-ready vector figure is just a different `output`:
+
+```julia
+tableau(Simulation, 1; output = "figure.pdf")     # vector, for a paper
+tableau(Simulation, 1; output = "figure.svg")     # vector, to hand-edit
+```
+
+For one cell layer plus a single substrate (511 cells, a 50×50 voxel grid) the three formats come
+out very differently:
+
+| format | size | notes |
+|---|---:|---|
+| `.png` | 154 KB | raster; the default, best for exploring |
+| `.pdf` | **52 KB** | vector, and the *smallest* of the three — the natural choice for publication |
+| `.svg` | 739 KB | vector, but uncompressed text, so much the largest |
+
+Two caveats worth knowing before reaching for `.svg`:
+
+- **Text is converted to outlines.** CairoMakie's SVG contains no `<text>` elements at all — labels
+  become glyph paths — so you cannot retype an axis label in Illustrator. (The stitched verbs,
+  [`montage`](@ref) and [`storyboard`](@ref), *do* emit real `<text>`, so their titles and legends
+  stay editable. If editable text is what you need, that is the path that gives it.)
+- **Heatmaps become one path per voxel.** The bulk of that 739 KB is ~2500 `<path>` elements for a
+  50×50 substrate grid, not the cell scatter. A finer mesh or more substrates inflates it quickly.
+
+A tableau **movie** still needs a video container; asking for `.svg` there fails in Makie's
+recorder rather than silently producing something odd.
 
 ## Choosing which cells appear, and what their colour means
 

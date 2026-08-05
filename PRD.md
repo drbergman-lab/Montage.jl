@@ -10,7 +10,7 @@
 
 **Target Users:** Computational modelers running PhysiCell simulations (typically via PhysiCellModelManager.jl) who need publication- and presentation-ready composite figures and movies.
 
-**Status:** **Planned — not yet implemented.** `src/Montage.jl` is a stub. This document records the intended behavior and the decisions still open with the user; it will be trimmed to match reality as features land.
+**Status:** **Implemented.** All three verbs work, static and animated, across six package extensions. This document records the behavior each feature actually has; entries are dated as they land.
 
 **Design principles:**
 1. Three verbs; whether a verb renders a still image or a movie is decided by its panel content (single image vs. frame sequence), not by a combinatorial explosion of `verb × static/movie` function names. `record` is the underlying movie renderer.

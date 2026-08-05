@@ -109,9 +109,22 @@ The transform runs when a panel is *placed*, so it takes effect only through a v
 `Panel` on its own does nothing.
 
 The default is `identity`, which is free — it returns the very same string object, so an
-untransformed composition is byte-identical to one built with no transform support at all. For a
-movie panel, `transform` may instead be a `Vector` parallel to the frames, when the edit differs
-per timepoint.
+untransformed composition is byte-identical to one built with no transform support at all.
+
+A **movie** panel's content is a list of frames, and `transform` can match it one-for-one:
+
+```julia
+# one function: every frame edited the same way
+Panel(frames; transform = svg -> replace(svg, "yellow" => "orange"))
+
+# one function per frame: frame t is edited by transform[t]
+Panel(frames; transform = [tint(t) for t in eachindex(frames)])
+```
+
+The per-frame form exists because some edits genuinely depend on the timepoint. Dropping a cell type
+does not — the same function works for every frame — but colouring cells by a data value does, since
+each frame has to be mapped from its own snapshot's values. That is exactly how `color` builds its
+movie transforms.
 
 ```@docs
 montage
