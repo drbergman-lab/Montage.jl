@@ -71,6 +71,25 @@ PhysiCell's own "N agents" caption is rewritten to the number actually shown, an
 narrows to the kept types — a figure whose key advertises types you just filtered out would be
 misleading.
 
+## Colouring cells by data
+
+`color` names a cells-table column and repaints each cell along `colormap` — again without
+re-rendering, by joining each SVG cell group's `id="cell…"` to the `ID` column and rewriting its
+fill:
+
+```julia
+montage(Simulation, ids; color = :pressure)                 # viridis + a colorbar
+storyboard(Simulation, 1; color = :damage, colormap = :plasma)
+```
+
+The cell-type legend is replaced by a **colorbar**, since per-type swatches would describe colours
+the figure no longer uses. Its range is pooled over every panel (and every frame of a movie) and
+computed after any `cell_types`/`include_dead` filtering, so a colour means the same thing
+everywhere in the figure — the point of a montage — and excluded cells cannot stretch the scale.
+
+This path carries a small built-in set of colormaps (`:viridis`, `:plasma`, `:grays`) so it stays
+dependency-free; [`tableau`](@ref) re-plots through Makie and has the full set.
+
 ## Editing panel contents: the `transform` seam
 
 Both of the above are built on a general hook. A [`Panel`](@ref) carries a `transform`, a function

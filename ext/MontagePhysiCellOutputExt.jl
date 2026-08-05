@@ -103,21 +103,30 @@ const _AGENT_COUNT_RE = r"(>\s*)(\d+)(\s+agents\s*<)"
 _asNameVector(x::Union{AbstractString,Symbol}) = [String(x)]
 _asNameVector(x) = String.(collect(x))
 
-"""
-    _cellFilter(cell_types, include_dead) -> transform
+const _CELL_ID_RE = r"id=\"cell(\d+)\""
+const _FILL_RE = r"fill=\"[^\"]*\""
 
-A `Panel` transform (see [`Panel`](@ref)) that keeps only the requested cells. Returns `identity`
-when nothing is being filtered, so an unfiltered panel is untouched.
+"""
+    _cellTransform(cell_types, include_dead; recolor=nothing) -> transform
+
+A `Panel` transform (see [`Panel`](@ref)) that edits one snapshot's cell layer: keeps only the
+requested cells and, when `recolor` is given, repaints each kept cell from its data. Returns
+`identity` when there is nothing to do, so an untouched panel really is untouched.
+
+Filtering and recolouring share one pass because both walk the same cell groups. `recolor` is a
+`(values, (lo, hi), colormap)` tuple: `values` maps cell `ID` to the quantity, and `(lo, hi)` is
+fixed by the caller across every panel or frame so colours stay comparable.
 
 PhysiCell's own "N agents" label is rewritten to the number actually shown — a figure captioned
 `511 agents` while displaying 200 of them would be wrong.
 """
-function _cellFilter(cell_types, include_dead::Bool)
-    cell_types === nothing && include_dead && return identity
+function _cellTransform(cell_types, include_dead::Bool; recolor = nothing)
+    cell_types === nothing && include_dead && recolor === nothing && return identity
     keep = cell_types === nothing ? nothing : Set(_asNameVector(cell_types))
     return function (svg::AbstractString)
         seen = 0        # cell groups the pattern recognised at all
         shown = 0       # of those, the ones kept
+        missed = 0      # kept, but with no data value to colour by
         out = replace(svg, _CELL_BLOCK_RE => function (block)
             seen += 1
             m = match(_CELL_BLOCK_RE, block)
@@ -125,8 +134,16 @@ function _cellFilter(cell_types, include_dead::Bool)
             (keep !== nothing && !(type in keep)) && return ""
             (!include_dead && dead) && return ""
             shown += 1
-            return block
+            recolor === nothing && return block
+            values, (lo, hi), colormap = recolor
+            idm = match(_CELL_ID_RE, block)
+            id = idm === nothing ? nothing : parse(Int, idm.captures[1])
+            v = id === nothing ? nothing : get(values, id, nothing)
+            v === nothing && (missed += 1; return block)      # keep PhysiCell's own colour
+            c = _rampColor(colormap, hi == lo ? 0.5 : (v - lo) / (hi - lo))
+            return replace(block, _FILL_RE => "fill=\"$c\"")
         end)
+        missed > 0 && @warn "no data value for some cells; they keep PhysiCell's colour" cells=missed
         # Only correct the caption if the cell layer was actually recognised. If the pattern
         # matched nothing — a PhysiCell change to attribute order, say — then nothing was filtered
         # either, and rewriting the count to 0 would mislabel a figure still showing every cell.
@@ -135,6 +152,100 @@ function _cellFilter(cell_types, include_dead::Bool)
             m = match(_AGENT_COUNT_RE, s)
             m.captures[1] * string(shown) * m.captures[3]
         end)
+    end
+end
+
+# --- recolouring cells by data ---------------------------------------------------------------
+#
+# Each cell group carries its id (`id="cell442"`), which joins to the `ID` column of the snapshot's
+# cells table — so any column can drive the colour without re-rendering the figure. Only `fill` is
+# rewritten: PhysiCell strokes are `stroke-width="0.5"` in a 1000 px canvas, i.e. ~0.15 px once a
+# panel is scaled to 300 px, so they are invisible and not worth disturbing.
+#
+# The colormaps live here, deliberately small, rather than pulling in a colour package or CairoMakie
+# — the whole point of this path is that it stays light. `tableau` has Makie's full set.
+
+const _COLORMAPS = Dict(
+    :viridis => [(68,1,84), (72,40,120), (62,74,137), (49,104,142), (38,130,142),
+                 (31,158,137), (53,183,121), (109,205,89), (253,231,37)],
+    :plasma  => [(13,8,135), (84,2,163), (139,10,165), (185,50,137), (219,92,104),
+                 (244,136,73), (254,188,43), (240,249,33), (240,249,33)],
+    :grays   => [(0,0,0), (32,32,32), (64,64,64), (96,96,96), (128,128,128),
+                 (160,160,160), (192,192,192), (224,224,224), (255,255,255)],
+)
+
+"""
+    _rampColor(colormap, t) -> String
+
+Colour at position `t ∈ [0,1]` along `colormap`, as an SVG `rgb(r,g,b)` string, by linear
+interpolation between the ramp's anchor points.
+"""
+function _rampColor(colormap::Symbol, t::Real)
+    anchors = get(_COLORMAPS, colormap, nothing)
+    anchors === nothing && error(
+        "unknown colormap $(repr(colormap)) for the SVG verbs; this path carries a small built-in " *
+        "set $(sort(collect(keys(_COLORMAPS)))) to stay dependency-free. `tableau` has all of " *
+        "Makie's colormaps.")
+    isfinite(t) || return "grey"
+    u = clamp(Float64(t), 0.0, 1.0) * (length(anchors) - 1)
+    i = clamp(floor(Int, u) + 1, 1, length(anchors) - 1)
+    f = u - (i - 1)
+    a, b = anchors[i], anchors[i + 1]
+    rgb = ntuple(k -> round(Int, a[k] + f * (b[k] - a[k])), 3)
+    return "rgb($(rgb[1]),$(rgb[2]),$(rgb[3]))"
+end
+
+"""
+    _cellValues(folder, index, column) -> Dict{Int,Float64}
+
+Map each cell's `ID` to its value of `column`, for the state the panel shows. Reads only the cells
+table (no substrates, no mesh).
+"""
+function _cellValues(folder, index, column)
+    snap = PhysiCellSnapshot(folder, index; include_cells = true)
+    snap === missing && error("could not read cells for snapshot $(repr(index)) in $folder")
+    cells = snap.cells
+    col = Symbol(column)
+    col in propertynames(cells) || error(
+        "no cell column $(repr(col)) to color by; call `cellLabels` for the available columns")
+    return Dict(Int(i) => Float64(v) for (i, v) in zip(cells.ID, getproperty(cells, col)))
+end
+
+"""
+    _svgColorbar(label, lo, hi, colormap; font_size) -> draw function
+
+A horizontal colorbar as a **draw function** `(x, y, avail_w) -> (fragment, w, h)`, the form the
+core legend machinery accepts for legends it cannot build itself. Replaces the cell-type key when
+cells are coloured by a continuous value, where per-type swatches would mean nothing.
+
+Emitted as one gradient-filled `<rect>` plus flat `<text>` — a single object to nudge in Illustrator
+rather than dozens of slices.
+"""
+function _svgColorbar(label, lo::Real, hi::Real, colormap::Symbol; font_size::Real)
+    fmt(v) = string(round(v; sigdigits = 3))
+    stops = join(["""<stop offset="$(round(i / 8; digits = 3))" stop-color="$(_rampColor(colormap, i / 8))"/>"""
+                  for i in 0:8], "")
+    return function (x0::Real, y0::Real, avail_w::Real)
+        bar_h = 0.95 * font_size
+        tw(t) = 0.58 * font_size * length(t)                 # same estimate the legend layout uses
+        lo_s, hi_s, lab = fmt(lo), fmt(hi), string(label)
+        gap = 0.4 * font_size
+        fixed = tw(lo_s) + tw(hi_s) + tw(lab) + 4gap
+        bar_w = clamp(avail_w - fixed, 4 * font_size, 14 * font_size)
+        h = 1.7 * font_size
+        cy = y0 + h / 2
+        base = cy + 0.35 * font_size                          # text baseline
+        x = x0
+        io = IOBuffer()
+        print(io, """<defs><linearGradient id="montage-cbar" x1="0" y1="0" x2="1" y2="0">$stops</linearGradient></defs>\n""")
+        println(io, """<text x="$(Montage._px(x))" y="$(Montage._px(base))" font-family="Arial" font-size="$(Montage._px(font_size))" fill="black">$(Montage._escapeXML(lo_s))</text>""")
+        x += tw(lo_s) + gap
+        println(io, """<rect x="$(Montage._px(x))" y="$(Montage._px(cy - bar_h / 2))" width="$(Montage._px(bar_w))" height="$(Montage._px(bar_h))" fill="url(#montage-cbar)" stroke="black" stroke-width="1"/>""")
+        x += bar_w + gap
+        println(io, """<text x="$(Montage._px(x))" y="$(Montage._px(base))" font-family="Arial" font-size="$(Montage._px(font_size))" fill="black">$(Montage._escapeXML(hi_s))</text>""")
+        x += tw(hi_s) + 2gap
+        println(io, """<text x="$(Montage._px(x))" y="$(Montage._px(base))" font-family="Arial" font-size="$(Montage._px(font_size))" fill="black">$(Montage._escapeXML(lab))</text>""")
+        return String(take!(io)), Montage._px(x + tw(lab) - x0), Montage._px(h)
     end
 end
 
@@ -158,6 +269,64 @@ content while still using `legend_position` to place it.
 """
 _resolveAuto(legend, folders, cell_types = nothing) =
     legend === :auto ? _keptLegend(Montage._cellTypeLegend(folders), cell_types) : legend
+
+"""
+    _colorPlan(color, panel_states, cell_types, include_dead, colormap) -> (transforms, colorbar)
+
+Work out how to paint each panel. `panel_states[p]` lists the `(folder, index)` states panel `p`
+shows — one for a still, many for a movie panel.
+
+Returns a `Panel` transform per panel (a plain function for a still, a per-frame `Vector` for a
+movie) and, when `color` is set, a colorbar draw function to use as the legend.
+
+The value range is pooled over **every** state of **every** panel, so a colour means the same thing
+in each panel of a montage and each frame of a movie — ranging panels separately would make them
+mutually incomparable, which is the whole point of a montage. It is computed *after* filtering, so
+cells that will not be drawn cannot stretch the scale.
+"""
+function _colorPlan(color, panel_states, cell_types, include_dead, colormap)
+    if color === nothing
+        tf = _cellTransform(cell_types, include_dead)     # frame-invariant, so one function will do
+        return [tf for _ in panel_states], nothing
+    end
+    keep = cell_types === nothing ? nothing : Set(_asNameVector(cell_types))
+    maps = [[_cellValues(f, i, color) for (f, i) in states] for states in panel_states]
+    kept = Float64[]
+    for (states, ms) in zip(panel_states, maps), ((f, i), vmap) in zip(states, ms)
+        types, deads = _cellAttributes(_stateSVG(f, i))
+        for (id, v) in vmap
+            t = get(types, id, nothing)
+            t === nothing && continue                     # not drawn in this snapshot
+            (keep !== nothing && !(t in keep)) && continue
+            (!include_dead && get(deads, id, false)) && continue
+            push!(kept, v)
+        end
+    end
+    isempty(kept) && error("no cells left to color after filtering")
+    rng = (minimum(kept), maximum(kept))
+    cm = Symbol(colormap)
+    mk(m) = _cellTransform(cell_types, include_dead; recolor = (m, rng, cm))
+    transforms = [length(ms) == 1 ? mk(ms[1]) : map(mk, ms) for ms in maps]
+    return transforms, _svgColorbar(color, rng[1], rng[2], cm; font_size = Montage._TITLE_FONT_SIZE)
+end
+
+"""
+    _cellAttributes(svg_path) -> (Dict(id => type), Dict(id => dead))
+
+Each cell's type and dead flag, read from the snapshot SVG itself — used to apply the same filter to
+the value range that the drawing will apply to the cells.
+"""
+function _cellAttributes(svg_path)
+    types = Dict{Int,String}()
+    deads = Dict{Int,Bool}()
+    isfile(svg_path) || return types, deads
+    for m in eachmatch(r"<g\s+id=\"cell(\d+)\"\s+type=\"([^\"]*)\"\s+dead=\"([^\"]*)\"", read(svg_path, String))
+        id = parse(Int, m.captures[1])
+        types[id] = String(m.captures[2])
+        deads[id] = m.captures[3] == "true"
+    end
+    return types, deads
+end
 
 # --- montage -----------------------------------------------------------------------------
 
@@ -191,22 +360,29 @@ All other keywords pass through to the core verb (`output`, `overwrite`, `panel_
 function Montage.montage(seqs::AbstractVector{<:PhysiCellSequence};
                          index = :final, title = seq -> _folderLabel(seq.folder),
                          legend = :auto, cell_types = nothing, include_dead::Bool = true,
-                         kwargs...)
-    legend = _resolveAuto(legend, (s.folder for s in seqs), cell_types)
-    tf = _cellFilter(cell_types, include_dead)
+                         color = nothing, colormap = :viridis, kwargs...)
     if _isMovieIndex(index)
-        panels = [Panel(_frameSVGs(seq, index); title = title(seq), transform = tf) for seq in seqs]
-        return montage(panels; legend, kwargs...)
+        idxs = _frameIndices(seqs[1], index)
+        states = [[(seq.folder, i) for i in _frameIndices(seq, index)] for seq in seqs]
+        tfs, cbar = _colorPlan(color, states, cell_types, include_dead, colormap)
+        panels = [Panel(_frameSVGs(seq, index); title = title(seq), transform = tf)
+                  for (seq, tf) in zip(seqs, tfs)]
+        return montage(panels; legend = _legendFor(legend, cbar, (s.folder for s in seqs), cell_types),
+                       kwargs...)
     end
     fname = _stateFile(index)
-    panels = Panel[]
+    kept = PhysiCellSequence[]
     for seq in seqs
-        svg = joinpath(seq.folder, fname)
-        isfile(svg) ? push!(panels, Panel(svg; title = title(seq), transform = tf)) :
+        isfile(joinpath(seq.folder, fname)) ? push!(kept, seq) :
             @warn "no $fname in $(seq.folder); skipping"
     end
-    isempty(panels) && error("no $fname found in the given folders")
-    return montage(panels; legend, kwargs...)
+    isempty(kept) && error("no $fname found in the given folders")
+    states = [[(seq.folder, index)] for seq in kept]
+    tfs, cbar = _colorPlan(color, states, cell_types, include_dead, colormap)
+    panels = [Panel(joinpath(seq.folder, fname); title = title(seq), transform = tf)
+              for (seq, tf) in zip(kept, tfs)]
+    return montage(panels; legend = _legendFor(legend, cbar, (s.folder for s in kept), cell_types),
+                   kwargs...)
 end
 
 Montage.montage(seq::PhysiCellSequence; kwargs...) = montage([seq]; kwargs...)
@@ -215,19 +391,32 @@ Montage.montage(seq::PhysiCellSequence; kwargs...) = montage([seq]; kwargs...)
 function Montage.montage(snaps::AbstractVector{<:PhysiCellSnapshot};
                          title = snap -> _folderLabel(snap.folder),
                          legend = :auto, cell_types = nothing, include_dead::Bool = true,
-                         kwargs...)
-    legend = _resolveAuto(legend, (s.folder for s in snaps), cell_types)
-    tf = _cellFilter(cell_types, include_dead)
-    panels = [Panel(_stateSVG(s.folder, s.index); title = title(s), transform = tf) for s in snaps]
-    return montage(panels; legend, kwargs...)
+                         color = nothing, colormap = :viridis, kwargs...)
+    states = [[(s.folder, s.index)] for s in snaps]
+    tfs, cbar = _colorPlan(color, states, cell_types, include_dead, colormap)
+    panels = [Panel(_stateSVG(s.folder, s.index); title = title(s), transform = tf)
+              for (s, tf) in zip(snaps, tfs)]
+    return montage(panels; legend = _legendFor(legend, cbar, (s.folder for s in snaps), cell_types),
+                   kwargs...)
 end
 Montage.montage(snap::PhysiCellSnapshot; kwargs...) = montage([snap]; kwargs...)
 
-# SVG paths for a movie's frames.
-function _frameSVGs(seq::PhysiCellSequence, index)
-    idxs = index === :all ? [s.index for s in seq.snapshots] : collect(index)
-    return [_stateSVG(seq.folder, i) for i in idxs]
-end
+# Snapshot indices a movie will play, and the SVG paths for them.
+_frameIndices(seq::PhysiCellSequence, index) =
+    index === :all ? [s.index for s in seq.snapshots] : collect(index)
+_frameSVGs(seq::PhysiCellSequence, index) =
+    [_stateSVG(seq.folder, i) for i in _frameIndices(seq, index)]
+
+"""
+    _legendFor(legend, colorbar, folders, cell_types) -> legend
+
+Pick the legend. When cells are recoloured by data, `:auto` becomes the **colorbar** — a cell-type
+key would describe colours the figure no longer uses. Otherwise `:auto` resolves to the cell types
+as before, and an explicit `legend` always wins.
+"""
+_legendFor(legend, colorbar, folders, cell_types) =
+    legend === :auto && colorbar !== nothing ? colorbar :
+        _resolveAuto(legend, folders, cell_types)
 
 # --- storyboard --------------------------------------------------------------------------
 
@@ -270,15 +459,17 @@ function Montage.storyboard(seq::PhysiCellSequence;
                             n_snapshots::Integer = isnothing(index) ? 4 : length(index),
                             title = t -> "t = $t",
                             legend = :auto, cell_types = nothing, include_dead::Bool = true,
+                            color = nothing, colormap = :viridis,
                             ncols::Union{Nothing,Integer} = nothing, kwargs...)
     isnothing(index) || n_snapshots == length(index) ||
         error("pass either `index` or `n_snapshots`, not both with different lengths (got n_snapshots=$n_snapshots, length(index)=$(length(index)))")
     snaps = isnothing(index) ? _evenSnapshots(seq, n_snapshots) : [_snapshotFor(seq, sel) for sel in index]
-    tf = _cellFilter(cell_types, include_dead)
+    states = [[(s.folder, s.index)] for s in snaps]
+    tfs, cbar = _colorPlan(color, states, cell_types, include_dead, colormap)
     panels = [Panel(_stateSVG(s.folder, s.index); title = string(title(s.time)), transform = tf)
-              for s in snaps]
+              for (s, tf) in zip(snaps, tfs)]
     return storyboard(panels; ncols = something(ncols, length(panels)),
-                      legend = _resolveAuto(legend, (seq.folder,), cell_types), kwargs...)
+                      legend = _legendFor(legend, cbar, (seq.folder,), cell_types), kwargs...)
 end
 
 end # module

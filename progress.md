@@ -589,3 +589,69 @@ With `include_dead=true` (the default) dead cells render **black** with no legen
 `legend.svg` has no dead row and the legend is config-driven. `include_dead=false` removes them, or
 an explicit `legend=[…, ("dead","black")]` supplies the key. Left alone deliberately — "dead" is a
 state, not a cell type.
+
+---
+
+## Session: colouring cells by data in the SVG verbs — Tier 2 (2026-08-05)
+
+Branch `feature/svg-cell-color` (stacked on `feature/svg-cell-filter`). The last and largest piece
+of to-do item 2: `color=:pressure` on `montage`/`storyboard`, not just `tableau`.
+
+### The join is what makes this possible at all
+Every cell group carries `id="cell442"`, which joins to the `ID` column of the snapshot's cells
+table. So *any* of the ~130 columns can drive the colour of an already-rendered figure. Verified on
+sim 1: all 511 ids in the SVG matched a row in the table, no misses.
+
+`_cellTransform` now does filtering **and** recolouring in one pass, since both walk the same cell
+groups. Cells with no matching row keep PhysiCell's own colour, with a single warning naming how
+many.
+
+### Only `fill` is rewritten
+The nucleus circle's `stroke` still carries the old cell-type colour. That looked like a defect
+until measured: PhysiCell writes `stroke-width="0.5"` in a 1000 px canvas, which is ~0.15 px once a
+panel is scaled to 300 px — invisible. Leaving strokes alone dropped a chunk of fiddly logic (the
+outer circle's stroke is `black` and must *stay* black, the nucleus's must not) for no visible cost.
+
+### Colormaps: deliberately a small built-in set
+`:viridis`, `:plasma`, `:grays` as 9-anchor RGB ramps with linear interpolation, emitting
+`rgb(r,g,b)`. No colour package, no CairoMakie — the entire point of this path is that it stays
+light, and a cell dot does not need a 256-entry LUT. An unknown name errors saying exactly that and
+pointing at `tableau`, which re-plots through Makie and has the full set. That boundary is the
+honest one: two paths with different weights get different capability, and the error explains why.
+
+### The colorbar, and a third legend form in core
+Under continuous colouring a cell-type key is worse than nothing — it names colours the figure no
+longer uses — so `:auto` becomes a colorbar (`_legendFor`).
+
+Placing it needed a decision. The legend machinery took entries (drawn) or an SVG source (nested);
+a colorbar is neither, and nesting one would reintroduce exactly the nested-`<svg>` problem branch 1
+removed for editability. Rather than teach core what a colorbar is, core gained a **draw function**
+form: `(x, y, avail_w) -> (fragment, w, h)`, called once to measure and once to emit. Core places
+and sizes something it knows nothing about; the extension owns the drawing. It also adapts to any
+width, so `:auto` can still use a spare grid cell.
+
+The bar itself is **one** gradient-filled `<rect>` plus flat `<text>` — a single object to nudge in
+Illustrator rather than the dozens of slices a gradient-free version would need.
+
+### Pooled range, computed after filtering
+`_colorPlan` pools the value range over every state of every panel. This is not a nicety: a montage
+whose panels each had their own scale would be actively misleading, since the whole point is
+comparison. Verified — sim 1 alone ranges 0–4.06; sims 1+2 together 0–5.46, so sim 2's higher
+pressures widen the shared bar and one colorbar serves both panels. Filtering is applied first
+(`_cellAttributes` re-reads type/dead from the SVG so the range sees exactly the cells that will be
+drawn), or excluded cells would stretch the ramp.
+
+### Verification
+- Core suite **133/133**, dependency-free — including the new draw-function legend form (measured
+  once, emitted once, emitted flat, centred, and usable in a spare cell).
+- Real data: ramp values and clamping; unknown-colormap error; 511/511 id join; 8 distinct fills →
+  135 after recolouring with type colours gone and non-cell content intact; colorbar geometry, one
+  gradient rect, labels; storyboard and cross-simulation montage rendered and eyeballed.
+
+### Notes (not addressed)
+- The gradient's element id is fixed (`montage-cbar`). Harmless while there is one legend per
+  figure, but two colorbars in one document would collide — worth a unique suffix if that ever
+  becomes possible.
+- A recoloured figure keeps PhysiCell's own colours for cells with no data value, which mixes two
+  colour meanings in one panel. Rare (it needs an id present in the SVG but absent from the table)
+  and warned about, but a stricter option could drop those cells instead.

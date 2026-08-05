@@ -118,11 +118,13 @@ Normalize the `legend` keyword, which says **what** to draw. Where it goes is th
 |---|---|
 | `nothing` / `false` | `nothing` — no legend |
 | a vector of `(label, color)` entries | the entries, drawn (empty ⇒ no legend) |
+| a function `(x, y, avail_w) -> (fragment, w, h)` | called to draw it |
 | a path or SVG string | the source, nested as-is |
 | `:auto` | `nothing` in the core — it means "discover from the data source", which only the PhysiCell extensions can do; they resolve it to entries before calling in |
 """
 function _normalizeLegend(legend)
     (legend === nothing || legend === false || legend === :auto) && return nothing
+    legend isa Function && return legend
     legend isa AbstractString && return String(legend)
     legend isa AbstractVector && return isempty(legend) ? nothing : legend
     error("unrecognized legend $(repr(legend)); expected nothing, `(label, color)` entries, an " *
@@ -163,10 +165,16 @@ intrinsic aspect ratio so nothing overflows or clips.
 The title band is reserved for the whole grid only if at least one panel is titled;
 an all-untitled composition reserves no band (no wasted vertical space).
 
-`legend_svg` (from [`_normalizeLegend`](@ref)) adds a legend — either a vector of
-`(label, color)` entries, which are **drawn** at `legend_font_size` as flat circles and text
-(see [`_svgLegend`](@ref)), or a path/SVG string, which is nested and scaled to fit. Placed per
-`legend_position`:
+`legend_svg` (from [`_normalizeLegend`](@ref)) adds a legend, in one of three forms:
+
+- a vector of `(label, color)` **entries**, drawn at `legend_font_size` as flat circles and text
+  (see [`_svgLegend`](@ref));
+- a **draw function** `(x, y, avail_w) -> (fragment, w, h)`, for a legend this module does not know
+  how to build — the PhysiCell extension supplies a colorbar this way. Called once to measure and
+  once to emit, so it must be pure;
+- a **path or SVG string**, nested and scaled to fit.
+
+Placed per `legend_position`:
 
 - `:auto` — the free cells trailing the last row, costing no space at all, else a full-width band
   below. A drawn legend wraps to whatever width it gets, so the run is always usable; a nested
@@ -214,8 +222,11 @@ function _svgGrid(panels::AbstractVector{Panel};
     # Resolve the legend before the totals, since a cell placement can grow the grid and a
     # band adds a row of its own. `legend_svg === nothing` skips all of this, leaving the
     # geometry below exactly as it was before legends existed.
-    drawn = legend_svg isa AbstractVector            # drawn entries vs. a nested source SVG
-    ltext = (legend_svg === nothing || drawn) ? nothing : _svgSource(legend_svg)
+    # Three legend kinds: drawn entries, a caller-supplied draw function, or a source SVG to nest.
+    # The first two adapt to whatever width they are given; only a nested SVG has to be scaled.
+    drawn = legend_svg isa AbstractVector
+    custom = legend_svg isa Function
+    ltext = (legend_svg === nothing || drawn || custom) ? nothing : _svgSource(legend_svg)
     liw, lih = ltext === nothing ? (0.0, 0.0) : _svgDimensions(ltext)
     legend_cell = nothing               # (row, col, span) when the legend takes grid cells
     legend_band = nothing               # :bottom | :top when it takes a full-width band
@@ -228,7 +239,8 @@ function _svgGrid(panels::AbstractVector{Panel};
             filled = n - (nrows - 1) * ncols          # panels in the last row
             span = ncols - filled                    # free cells after them
             run_w = span * cell_w + (span - 1) * pad
-            place = span >= 1 && (drawn || run_w / liw >= 0.7) ? (nrows, filled + 1, span) : :bottom
+            adapts = drawn || custom       # wraps/relayouts, so any width is usable
+            place = span >= 1 && (adapts || run_w / liw >= 0.7) ? (nrows, filled + 1, span) : :bottom
         end
         if place isa Tuple
             r, c = Int(place[1]), Int(place[2])
@@ -250,9 +262,10 @@ function _svgGrid(panels::AbstractVector{Panel};
     # source SVG scales down to fit it.
     # An external legend is placed at its natural size, only ever shrunk to fit (never blown up).
     legendSize(avail_w, avail_h) =
-        drawn ? (t = _legendLayout(legend_svg, avail_w; font_size=legend_font_size);
-                 (_px(t[2]), _px(t[3]))) :
-                (s = min(avail_w / liw, avail_h / lih, 1.0); (_px(liw * s), _px(lih * s)))
+        drawn  ? (t = _legendLayout(legend_svg, avail_w; font_size=legend_font_size);
+                  (_px(t[2]), _px(t[3]))) :
+        custom ? (r = legend_svg(0.0, 0.0, Float64(avail_w)); (_px(r[2]), _px(r[3]))) :
+                 (s = min(avail_w / liw, avail_h / lih, 1.0); (_px(liw * s), _px(lih * s)))
 
     grid_h = nrows * cell_h + (nrows + 1) * pad
     total_h = grid_h
@@ -307,9 +320,10 @@ function _svgGrid(panels::AbstractVector{Panel};
         # Lay out against `legend_avail` — the width the legend was *sized* against — not `lw`,
         # its used width. Re-wrapping at exactly its own width puts the last entry on a float
         # equality boundary, which can wrap it onto a row the reserved band has no height for.
-        println(io, drawn ?
-            first(_svgLegend(legend_svg, lx, ly, legend_avail; font_size=legend_font_size)) :
-            _nestedSVG(ltext, lx, ly, lw, lh))
+        println(io,
+            drawn  ? first(_svgLegend(legend_svg, lx, ly, legend_avail; font_size=legend_font_size)) :
+            custom ? first(legend_svg(lx, ly, legend_avail)) :
+                     _nestedSVG(ltext, lx, ly, lw, lh))
     end
 
     println(io, "</svg>")
