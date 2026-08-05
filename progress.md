@@ -340,3 +340,89 @@ cohesion with montage/storyboard; precise for a focal-centric composed scene, no
 built on the same Observable-driven layout engine (drive `_tableauFigure` from a running sim's
 output or a time slider instead of a recorded frame loop). So the two words become two features,
 not a rename. See CLAUDE.md To-dos.
+
+---
+
+## Session: cell-type legend for `montage` / `storyboard` (2026-08-05)
+
+Branch `feature/svg-legend`. First of five to-do items; the only one with real core changes.
+
+### Two wrong turns, worth recording so they are not repeated
+The final design — parse PhysiCell's `legend.svg` for `(label, colour)` pairs and **draw** the
+legend ourselves — was reached only after two detours, both from bad framing on my part.
+
+**Detour 1: nesting `legend.svg` as an image.** The first implementation embedded `legend.svg`
+as a scaled nested `<svg>`, on the reasoning that its colours come from PhysiCell's *compiled*
+coloring function and `PhysiCellOutput` exposes no colour data — so it looked like the only
+faithful source. The user corrected the premise: **faithfulness to PhysiCell's legend was never a
+goal — we just need *a* legend.** Nesting it was also actively bad, because a nested `<svg>` is
+what PowerPoint and Illustrator handle worst, and hand-editability is a large part of why the
+output is SVG at all. Costs of that version: a font-ratio scale factor
+(`_svgFontSize`/`_legendFontScale`/`_legendScale`), a minimum-legibility floor
+(`_LEGEND_AUTO_FIT_FLOOR`, because a 1440-wide legend in one 300 px cell rendered text at
+**8.85 px** against 22 px titles), and a wasteful band (147 px for content needing 49 px).
+
+**Detour 2: deriving entries by scanning snapshot SVGs.** Freed from `legend.svg`, I noticed the
+snapshots tag every cell (`<g id="cell442" type="tumor_epi" dead="false">`) and derived the legend
+from those instead. That fixed the drawing problems but replaced them with a *sampling* problem:
+cost scaled with **frames**, so a fixed movie legend needed a heuristic (3 frames per panel) that
+could miss a transient type — and scanning exhaustively measured **59 s / 8.9 GB** for a 64-panel
+movie. The user pointed out the actual answer: this code is PhysiCell-only, `legend.svg` is right
+there with names *and* colours, and the legend should describe **what the config says the model can
+contain**, not what happens to be visible. Cost then scales with *simulations*, not frames:
+**13.9 ms / 97 KB for 64 sims**.
+
+Both detours shared one mistake: treating "reuse PhysiCell's legend file" and "build our own
+legend" as mutually exclusive. The right answer uses the file as a *data source* and does the
+drawing itself.
+
+### What the final design gets
+- **No scale factor, no legibility floor.** Drawn at the title font size, wrapping to fit.
+  `_svgFontSize`, `_legendFontScale`, `_legendScale`, `_LEGEND_AUTO_FIT_FLOOR` all deleted.
+- **Config order for free** — `legend.svg` rows are in cell-type order, better than sorting by name.
+- **Movies need no frame inspection.** A movie legend *must* be fixed (it affects figure height,
+  and H.264 requires constant frame dimensions), so a config-derived legend is exactly right:
+  complete for every frame by construction. Verified identical across all 121 frames of sim 38.
+- **Unblocks branch 3.** The planned `_filterLegendSVG` (rebuilding `legend.svg` on its 65 px
+  pitch after filtering) is unnecessary.
+- **Three times more compact** than the nested version: 147 px band → 49 px.
+- No automatic `dead` entry. It existed only because scanning saw dead cells; `legend.svg` has no
+  such row, and "dead" is a state rather than a cell type. Users wanting one pass explicit entries.
+
+### Design details
+- `MontageSpec` carries the legend so every movie frame draws the same one; a five-argument
+  constructor preserves the old arity. `legend_svg` is typed `Any` (entries *or* a path).
+- `_legendEntries(folders)` unions each folder's `legend.svg` rows, first occurrence winning, so a
+  sweep mixing configs still explains every type — verified: 52 dev-project sims define 4 cell
+  types, 12 define a 5th (`filler`), and a 64-sim montage lists all five.
+- `:auto` prefers the free cells trailing the last row, spanning the run, so the legend costs
+  **no space**; else a band below.
+- `legend="my.svg"` still nests an external file, placed at natural size and shrunk only to fit.
+- Legend geometry derives from ratios, so `_px` rounds it — applied only where that noise arises,
+  keeping the no-legend path byte-identical.
+- Titles' hardcoded `font-size="22"` became `_TITLE_FONT_SIZE`, in `types.jl` because
+  `MontageSpec`'s constructor defaults to it and `types.jl` is included first.
+
+### Bug caught only by looking at the render
+The band is sized against the *available* width, but the drawing pass was re-laying-out against the
+legend's own *used* width. That puts the final entry exactly on a float equality boundary: for sim
+38's 4-entry legend across a 1260 px strip it wrapped onto a second row that the reserved band had
+no height for, **clipping `nk` off the bottom edge**. Tests passed — two earlier cases happened to
+fall the other side of the boundary. Fixed by carrying the sizing width through to the drawing
+pass, with a regression test asserting every legend marker sits inside the figure. Lesson: for
+layout code, render and look; exact-dimension assertions can pass while the picture is wrong.
+
+### Also recorded
+`identity` vs `nothing` for the `transform` hook coming in branch 3: measured on a real 62 KB
+`final.svg`, `identity(s) === s` is `true`, pointers equal, `@allocated` **0 bytes**. Zero-cost
+default. (Julia's `replace` likewise returns the same object when nothing matches.)
+
+### Verification
+- Core suite **112/112** (was 49), no heavy deps, precompiles with no method-overwrite warnings.
+  Includes the byte-identical-when-`legend=nothing` guard, the wrap-not-scale assertion, and a
+  check that a drawn legend emits no nested `<svg>`.
+- Dev project, rendered with `rsvg-convert` and eyeballed: sim 38 storyboard → one compact centred
+  row (`tumor_epi`/`tumor_mes`/`caf`/`nk`) at title size, nothing clipped; 3-sim montage → legend
+  wrapped into the free (2,2) cell with **identical dimensions** to no-legend; 64-sim montage →
+  `filler` correctly included from the 12 sims that define it; movie legend identical in frames 1
+  and 121; folder with no `legend.svg` → no legend.
