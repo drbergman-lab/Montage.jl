@@ -366,10 +366,18 @@ end
             # centred in the 948-wide figure
             @test occursin("<rect x=\"434.0\"", svg)
         end
-        # like drawn entries, a draw function adapts to any width, so :auto may use a spare cell
+        # a draw function that fits the spare cell is placed there, costing no space
         withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
             m = montage(paths; legend=drawer, output=nothing)    # 2×2 grid, cell (2,2) free
             @test occursin("height=\"636.0\"", m)               # unchanged: no band needed
+        end
+        # one that cannot shrink to the cell must fall back to a band rather than overflow into
+        # the neighbouring panel — core asks it, since only the function knows its own floor
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            wide = (x, y, avail_w) -> ("<rect x=\"$x\" y=\"$y\" width=\"900\" height=\"20\"/>", 900.0, 20.0)
+            m = montage(paths; legend=wide, output=nothing)      # 900 > the 300px spare cell
+            @test !occursin("height=\"636.0\"", m)              # grew: it went to a band
+            @test occursin("height=\"668.0\"", m)               # 636 + 20 + 12
         end
     end
 

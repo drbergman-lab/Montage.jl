@@ -239,7 +239,11 @@ function _svgColorbar(label, lo::Real, hi::Real, colormap::Symbol; font_size::Re
         lo_s, hi_s, lab = fmt(lo), fmt(hi), string(label)
         gap = 0.4 * font_size
         fixed = tw(lo_s) + tw(hi_s) + tw(lab) + 4gap
-        bar_w = clamp(avail_w - fixed, 4 * font_size, 14 * font_size)
+        # Shrink the bar to whatever is left rather than holding a floor: core sizes a draw-function
+        # legend from what this returns and may put it in a single spare cell, so a hard minimum
+        # would overflow into the neighbouring panel. (A label longer than the whole width is a
+        # degenerate layout that no clamp here can fix.)
+        bar_w = clamp(avail_w - fixed, 0.0, 14 * font_size)
         h = 1.7 * font_size
         cy = y0 + h / 2
         base = cy + 0.35 * font_size                          # text baseline

@@ -239,8 +239,15 @@ function _svgGrid(panels::AbstractVector{Panel};
             filled = n - (nrows - 1) * ncols          # panels in the last row
             span = ncols - filled                    # free cells after them
             run_w = span * cell_w + (span - 1) * pad
-            adapts = drawn || custom       # wraps/relayouts, so any width is usable
-            place = span >= 1 && (adapts || run_w / liw >= 0.7) ? (nrows, filled + 1, span) : :bottom
+            # Can the legend live in that run of free cells? Entries wrap, so always. A draw
+            # function reports its own size, so ask it — it may not be able to shrink far enough
+            # (a colorbar's tick labels have a floor), and overflowing into a panel is worse than
+            # spending a band. A nested SVG can only scale, so require it not shrink too far.
+            fits = span < 1 ? false :
+                   drawn    ? true :
+                   custom   ? legend_svg(0.0, 0.0, Float64(run_w))[2] <= run_w :
+                              run_w / liw >= 0.7
+            place = fits ? (nrows, filled + 1, span) : :bottom
         end
         if place isa Tuple
             r, c = Int(place[1]), Int(place[2])
