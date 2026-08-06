@@ -12,7 +12,9 @@ Build a [`MontageSpec`](@ref) from animated panels (content is a `Vector` of fra
 paths). Frames are aligned by index and truncated to the shortest sequence; a warning
 is emitted if the panels have differing frame counts.
 """
-function _montageSpec(panels::AbstractVector{Panel}; panel_width, title_height, pad)
+function _montageSpec(panels::AbstractVector{Panel}; panel_width, title_height, pad,
+                      legend_svg=nothing, legend_position=:auto,
+                      legend_font_size=_TITLE_FONT_SIZE)
     all(_isAnimated, panels) ||
         error("montage movie: every panel must carry a frame sequence (a Vector of frame paths)")
     lens = [length(p.content) for p in panels]
@@ -21,21 +23,29 @@ function _montageSpec(panels::AbstractVector{Panel}; panel_width, title_height, 
     if !all(==(nframes), lens)
         @warn "montage movie: panels have differing frame counts; truncating to the shortest" counts=lens nframes
     end
+    # Resolve a legend *file* to its text once. Otherwise every frame re-reads it through
+    # `_svgGrid`, and the spec would depend on the file still being there mid-render — for a legend
+    # that is fixed for the whole movie by design.
     return MontageSpec(collect(panels), nframes,
-                       Float64(panel_width), Float64(title_height), Float64(pad))
+                       Float64(panel_width), Float64(title_height), Float64(pad),
+                       legend_svg isa AbstractString ? _svgSource(legend_svg) : legend_svg,
+                       legend_position, Float64(legend_font_size))
 end
 
 """
     _svgFrame(spec::MontageSpec, t::Integer) -> String
 
 Compose the montage SVG for timepoint `t` (1-based) by taking each panel's `t`-th frame
-and stitching them with the same grid logic as the static [`montage`](@ref).
+and stitching them with the same grid logic as the static [`montage`](@ref). The spec's
+legend is drawn into every frame, so it stays put for the whole movie.
 """
 function _svgFrame(spec::MontageSpec, t::Integer)
     1 <= t <= spec.nframes || throw(BoundsError(spec, t))
     frame = [Panel(p.content[t], p.title) for p in spec.panels]
     return _svgGrid(frame; panel_width=spec.panel_width,
-                    title_height=spec.title_height, pad=spec.pad)
+                    title_height=spec.title_height, pad=spec.pad,
+                    legend_svg=spec.legend_svg, legend_position=spec.legend_position,
+                    legend_font_size=spec.legend_font_size)
 end
 
 """

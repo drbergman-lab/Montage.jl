@@ -12,6 +12,7 @@ _defaultOutput(panels) = any(_looksAnimated, panels) ? "montage.mp4" : "montage.
 
 """
     montage(panels; backend=:svg, panel_width=300, title_height=34, pad=12,
+            legend=nothing, legend_file=nothing, legend_font_size=22,
             output=<auto: montage.svg | montage.mp4>, overwrite=false, framerate=15)
 
 Compose `panels` into a uniform titled grid — the verb for comparing like-for-like
@@ -35,6 +36,18 @@ FFMPEG`).
 - `title_height::Real=34`: px reserved above each panel for its title. The band is
   reserved for the whole grid only if at least one panel is titled.
 - `pad::Real=12`: px of padding between and around panels.
+- `legend`: a legend to draw alongside the panels. Either **what** to draw —
+  `[("label", "color"), …]` entries (drawn as flat circles + labels, so they stay editable in
+  Illustrator/PowerPoint), or an SVG path/string to nest as-is — or **where** to put the legend
+  named by `legend_file`: `:auto` (the free cells trailing the last row if the layout has any, so
+  the figure does not grow, else a full-width band below), `:bottom`, `:top`, or an explicit
+  `(row, col)`. `nothing` (the default) draws no legend. With PhysiCellOutput or PCMM loaded this
+  defaults to `:auto`, with entries derived from the cell types actually drawn in the panels.
+- `legend_file`: the legend to use when `legend` only says *where*. Usually supplied by the
+  PhysiCell extensions rather than by hand.
+- `legend_font_size::Real=22`: text size for a drawn legend — the panel-title size by default, so
+  the two match. Drawn legends keep this size and **wrap** to fit the space; a nested SVG legend
+  instead sits at its natural size, shrunk only if it will not fit.
 - `output::Union{Nothing,AbstractString}`: where to write the result, in the current
   directory by default — `montage.svg` for a still image, `montage.mp4` for a movie.
   Errors if the file exists unless `overwrite=true`. Pass `output=nothing` to skip writing
@@ -64,22 +77,28 @@ montage([Panel(["a/f1.svg", "a/f2.svg"]; title="A"),
 """
 function montage(panels; backend::Symbol=:svg, panel_width::Real=300,
                  title_height::Real=34, pad::Real=12,
+                 legend=nothing, legend_file=nothing, legend_font_size::Real=_TITLE_FONT_SIZE,
                  output::Union{Nothing,AbstractString}=_defaultOutput(panels),
                  overwrite::Bool=false, framerate::Integer=15)
     ps = _asPanels(panels)
+    legend_svg, legend_position = _normalizeLegend(legend, legend_file)
     if any(_isAnimated, ps)
         # movie: build the spec, then render it (unless output=nothing → return the spec)
-        spec = _montageSpec(ps; panel_width, title_height, pad)
+        spec = _montageSpec(ps; panel_width, title_height, pad,
+                            legend_svg, legend_position, legend_font_size)
         output === nothing && return spec
         return record(spec, output; framerate, overwrite)
     end
-    return _montage(montageBackend(backend), ps; panel_width, title_height, pad, output, overwrite)
+    return _montage(montageBackend(backend), ps; panel_width, title_height, pad,
+                    legend_svg, legend_position, legend_font_size, output, overwrite)
 end
 
 # --- :svg backend (core) ---
 function _montage(::SVGBackend, panels::AbstractVector{Panel};
-                  panel_width, title_height, pad, output, overwrite)
-    svg = _svgGrid(panels; panel_width, title_height, pad)
+                  panel_width, title_height, pad,
+                  legend_svg, legend_position, legend_font_size, output, overwrite)
+    svg = _svgGrid(panels; panel_width, title_height, pad,
+                   legend_svg, legend_position, legend_font_size)
     return _writeSVG(svg, output, overwrite)
 end
 

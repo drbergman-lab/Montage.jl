@@ -78,6 +78,34 @@
 
 ---
 
+## Feature: Cell-type legend for `montage` / `storyboard` — **implemented 2026-08-05**
+
+**One-line description:** Draw a cell-type legend alongside a stitched-SVG composition, built from the cell types the composition actually shows.
+
+**Priority:** Should-have (a montage of colored cells is unreadable without a key).
+
+**Where the entries come from:** PhysiCell's own `output/legend.svg`, which already carries exactly the data a legend needs — one row per **configured** cell type, giving both the name and the colour PhysiCell draws it with. It is parsed for `(label, colour)` pairs; the legend is then **drawn** by Montage rather than nested, so it is compact, wraps, matches the title font, and stays editable.
+
+Two consequences worth stating:
+- Cost is one ~1.5 KB file **per simulation**, not per frame — it does not matter how many snapshots a movie has (64 sims: 13.9 ms, 97 KB).
+- The legend describes what the model **can** contain per the config, deliberately *not* narrowed to what is visible in a given snapshot. That is also what makes one fixed legend correct for every frame of a movie without inspecting any of them — which matters because a movie's legend *must* be fixed: it affects the figure height, and H.264 requires constant frame dimensions.
+
+Row order follows the config's own cell-type order.
+
+**Behavioral specification (core):**
+- `storyboard(panels; backend=:svg, ncols=length(panels), panel_width=300, title_height=34, pad=12, output="storyboard.svg", overwrite=false)`.
+- Panels are an **ordered** sequence; laid out row-major, defaulting to a **single row** (`ncols = n`). `ncols` wraps into a grid while preserving time order.
+- Each panel's title is exposed (where timestamps go). Frame-sequence (animated) panels are rejected — storyboard is static.
+- Shares the `_svgGrid(panels; ncols, …)` builder with `montage`. Writes by default (`storyboard.svg`), `output=nothing` returns the string, same overwrite guard.
+
+**PCMM extension** (`storyboard(::Type{Simulation}, sim_id; …)`): operates on **one** simulation. Timepoints via `index` (a vector of `Integer` snapshot indices and/or `:initial`/`:final`) **or** `n_snapshots` (default 4: evenly-spaced spanning the run, including endpoints). `n_snapshots` defaults to `length(index)` when `index` is given; passing both with different lengths errors. Frame titles are the snapshots' simulation times via a `title` function (default `t -> "t = $t"`). Writes under `dataDir()/outputs/storyboard.svg` by default.
+
+**Acceptance criteria:**
+- `storyboard(Simulation, sim_id)` writes a single-row filmstrip of 4 evenly-spaced, timestamp-titled frames. ✓ verified on the dev project.
+- Core works with no PCMM, given hand-written ordered panels.
+
+---
+
 ## Feature: `tableau` — CairoMakie backend **(implemented incl. movies, 2026-07-23)**
 
 **One-line description:** Compose a single simulation state as a focal panel with satellite panels arranged around it.

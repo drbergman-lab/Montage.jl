@@ -6,6 +6,16 @@
 # core already owns.
 
 """
+Font size (px) of the bold panel titles drawn by `_svgGrid`.
+
+Also the default size for a **drawn** legend's text, so legend and titles match. (A legend given
+as an SVG *file* is not rescaled to it — that one is placed at its natural size.) Lives here rather
+than in `svg_backend.jl` because `MontageSpec`'s old-arity constructor defaults to it, and
+`types.jl` is included first.
+"""
+const _TITLE_FONT_SIZE = 22
+
+"""
     Panel(content; title="")
     Panel(content, title)
 
@@ -82,6 +92,10 @@ grid layout parameters. Built by [`montage`](@ref) when its panels are animated,
 consumed by [`record`](@ref).
 
 Frames are aligned by index and truncated to the shortest sequence (see `nframes`).
+
+The `legend_svg`/`legend_position`/`legend_font_size` fields carry the composition's legend
+(see `_svgGrid`) so every rendered frame draws the same one — a legend that would otherwise
+flicker or vanish mid-movie. The five-argument constructor omits them (no legend).
 """
 struct MontageSpec
     panels::Vector{Panel}
@@ -89,7 +103,14 @@ struct MontageSpec
     panel_width::Float64
     title_height::Float64
     pad::Float64
+    legend_svg::Any                     # nothing | (label, color) entries | an SVG path/string
+    legend_position::Any
+    legend_font_size::Float64
 end
+
+# Old-arity constructor — keeps hand-built specs (and any caller predating legends) working.
+MontageSpec(panels, nframes, panel_width, title_height, pad) =
+    MontageSpec(panels, nframes, panel_width, title_height, pad, nothing, :auto, _TITLE_FONT_SIZE)
 
 Base.show(io::IO, spec::MontageSpec) =
     print(io, "MontageSpec($(length(spec.panels)) panels × $(spec.nframes) frames)")
