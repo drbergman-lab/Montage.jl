@@ -7,7 +7,7 @@
 
 Compose PhysiCell visualizations into intentionally-structured composite figures — and movies.
 
-All three verbs are implemented, static and animated. See [Implementation Status](#implementation-status) for the feature-by-feature record, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for design rationale.
+All three verbs are implemented: `montage` and `tableau` render stills and movies, `storyboard` is static by design. See [Implementation Status](#implementation-status) for the feature-by-feature record, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for design rationale.
 
 ## What it does
 
