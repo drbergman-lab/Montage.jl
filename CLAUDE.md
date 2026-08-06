@@ -20,9 +20,9 @@ Montage.jl composes PhysiCell visualizations into intentionally-structured compo
 - **`storyboard`** — show one thing evolving over time (1-D ordered sequence of frames; e.g. time evolution of one simulation).
 - **`tableau`** — show how heterogeneous components of one state relate spatially (a focal panel with satellite panels around it; e.g. cell layer centered, substrate heatmaps surrounding it).
 
-Static vs. animated is an **orthogonal axis**: any verb can render a static figure or a movie (`Makie.record`). Movies are a first-class, headline feature.
+Static vs. animated is a mostly **orthogonal axis**: `montage` and `tableau` each render a still figure or a movie, while `storyboard` is deliberately static (it is the filmstrip). The two movie paths differ — `montage` rasterizes stitched SVG frames and encodes them with FFMPEG (`record`), whereas `tableau` uses `Makie.record`. Movies are a first-class, headline feature.
 
-**Status: implemented.** All three verbs work, static and animated. See [README.md](README.md) Implementation Status for what exists, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for the design rationale (including approaches tried and rejected).
+**Status: implemented.** `montage` and `tableau` render both stills and movies; `storyboard` is static by design. See [README.md](README.md) Implementation Status for what exists, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for the design rationale (including approaches tried and rejected).
 
 ## Fixed Constraints (decided — do not relitigate)
 1. **Package name is `Montage.jl`; module is `Montage`.** The eponymous `montage` function inside module `Montage` is intentional.

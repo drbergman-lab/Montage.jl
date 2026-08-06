@@ -11,7 +11,7 @@ All three verbs are implemented, static and animated. See [Implementation Status
 
 ## What it does
 
-Montage gives you three verbs for the three distinct things you might want a composite figure to say. Static or animated is a separate choice — any verb can render a still figure or a movie.
+Montage gives you three verbs for the three distinct things you might want a composite figure to say. Static or animated is a mostly separate choice: `montage` and `tableau` each render a still figure or a movie, while `storyboard` is deliberately static — it *is* the filmstrip.
 
 | Verb | Use it to… | Looks like |
 |------|-----------|-----------|

@@ -51,7 +51,8 @@ Output follows the same rules as the other verbs (writes `tableau.png` by defaul
 ## Vector output
 
 The file extension picks the format — CairoMakie renders `.png`, `.svg` and `.pdf`, so a
-publication-ready vector figure is just a different `output`:
+publication-ready vector figure is just a different `output`. This applies to every `tableau`
+method; the examples below use the PhysiCell one (`using PhysiCellModelManager`):
 
 ```julia
 tableau(Simulation, 1; output = "figure.pdf")     # vector, for a paper
