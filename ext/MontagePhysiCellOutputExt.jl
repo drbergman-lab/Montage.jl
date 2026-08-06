@@ -116,8 +116,10 @@ function _cellFilter(cell_types, include_dead::Bool)
     cell_types === nothing && include_dead && return identity
     keep = cell_types === nothing ? nothing : Set(_asNameVector(cell_types))
     return function (svg::AbstractString)
-        shown = 0
+        seen = 0        # cell groups the pattern recognised at all
+        shown = 0       # of those, the ones kept
         out = replace(svg, _CELL_BLOCK_RE => function (block)
+            seen += 1
             m = match(_CELL_BLOCK_RE, block)
             type, dead = m.captures[1], m.captures[2] == "true"
             (keep !== nothing && !(type in keep)) && return ""
@@ -125,6 +127,10 @@ function _cellFilter(cell_types, include_dead::Bool)
             shown += 1
             return block
         end)
+        # Only correct the caption if the cell layer was actually recognised. If the pattern
+        # matched nothing — a PhysiCell change to attribute order, say — then nothing was filtered
+        # either, and rewriting the count to 0 would mislabel a figure still showing every cell.
+        seen == 0 && return out
         return replace(out, _AGENT_COUNT_RE => s -> begin
             m = match(_AGENT_COUNT_RE, s)
             m.captures[1] * string(shown) * m.captures[3]
