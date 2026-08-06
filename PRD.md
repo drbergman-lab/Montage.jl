@@ -129,10 +129,20 @@ Row order follows the config's own cell-type order.
 - **PhysiCellOutput extension:** `cell_types` (a name or vector) and `include_dead=true` build the transform (`_cellFilter`), which returns `identity` when nothing is filtered. PhysiCell's "N agents" caption is **rewritten to the number actually drawn** — a figure captioned `511 agents` while showing 200 would be wrong.
 - **The legend narrows to the kept types** (`_keptLegend`). Config-derived entries are deliberately *not* narrowed to what is visible in a snapshot (that is what keeps one legend correct for a whole movie), but an explicit `cell_types` filter is different: those cells were removed on purpose.
 
+**Colouring by data (Tier 2) — implemented 2026-08-05:**
+- `color` names a cells-table column; each cell group's `id="cell…"` joins to the `ID` column (`_cellValues`) and its `fill` is rewritten from `colormap`. Filtering and recolouring share one pass (`_cellTransform`) since both walk the same groups.
+- **Only `fill` is rewritten.** PhysiCell strokes are `stroke-width="0.5"` in a 1000 px canvas — about 0.15 px once a panel is scaled to 300 px — so they are invisible and not worth disturbing.
+- **The range is pooled across every panel and frame, and computed after filtering** (`_colorPlan`), so a colour means the same thing throughout the figure and excluded cells cannot stretch the scale. Verified: sim 1 alone ranges 0–4.06, sims 1+2 together 0–5.46.
+- **Colormaps are a small built-in set** (`:viridis`, `:plasma`, `:grays`) as 9-anchor RGB ramps with linear interpolation, kept here rather than pulling in a colour package — this path exists to stay light. Unknown names error saying so and pointing at `tableau`.
+- **The legend becomes a colorbar** (`_svgColorbar`), since per-type swatches would describe colours the figure no longer uses. Emitted as *one* gradient-filled `<rect>` plus flat `<text>` — a single object to nudge in Illustrator, not dozens of slices.
+- **Core gained a third legend form: a draw function** `(x, y, avail_w) -> (fragment, w, h)`, called once to measure and once to emit. This keeps colorbar knowledge out of core while still letting it place and size one, and it adapts to any width, so `:auto` can put it in a spare cell.
+- Cells with no data value keep PhysiCell's own colour, with one warning naming the count.
+
 **Acceptance criteria:**
 - `cell_types`/`include_dead` drop exactly the right cells and nothing else. ✓ verified on the dev project: 511 cells → 200 for `["nk","caf"]`, 100 for scalar `"nk"`, 482 for `include_dead=false`, 234 for both; captions track (511/200/482/234); scale bar, time text and `tissue` group all preserved; `_cellFilter(nothing, true) === identity`.
 - The legend lists only kept types. ✓ verified and rendered.
 - An untransformed composition is unchanged. ✓ core test.
+- `color=:pressure` recolours along the ramp and swaps the key for a colorbar. ✓ verified on the dev project: all 511 ids joined, 8 distinct fills became 135, type colours gone from the cells, scale bar/time text/`tissue` group intact, one colorbar per figure, rendered and inspected.
 
 ---
 

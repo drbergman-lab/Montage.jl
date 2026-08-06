@@ -347,6 +347,40 @@ end
         end
     end
 
+    @testset "legend — a caller-supplied draw function" begin
+        # the third legend form: for legends core cannot build itself (the PhysiCell extension
+        # draws a colorbar this way). Called once to measure, once to emit.
+        calls = Ref(0)
+        drawer = function (x, y, avail_w)
+            calls[] += 1
+            return ("<rect x=\"$x\" y=\"$y\" width=\"80\" height=\"20\" fill=\"blue\"/>", 80.0, 20.0)
+        end
+        @test Montage._normalizeLegend(drawer) === drawer
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            svg = storyboard(paths; legend=drawer, output=nothing)
+            @test calls[] == 2                                  # measured, then emitted
+            # 20 tall + 12 pad added to the 324 grid
+            @test occursin("height=\"356.0\"", svg)
+            @test occursin("fill=\"blue\"", svg)
+            @test !occursin("<svg x=", split(svg, "fill=\"blue\"")[2])   # emitted flat, not nested
+            # centred in the 948-wide figure
+            @test occursin("<rect x=\"434.0\"", svg)
+        end
+        # a draw function that fits the spare cell is placed there, costing no space
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            m = montage(paths; legend=drawer, output=nothing)    # 2×2 grid, cell (2,2) free
+            @test occursin("height=\"636.0\"", m)               # unchanged: no band needed
+        end
+        # one that cannot shrink to the cell must fall back to a band rather than overflow into
+        # the neighbouring panel — core asks it, since only the function knows its own floor
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            wide = (x, y, avail_w) -> ("<rect x=\"$x\" y=\"$y\" width=\"900\" height=\"20\"/>", 900.0, 20.0)
+            m = montage(paths; legend=wide, output=nothing)      # 900 > the 300px spare cell
+            @test !occursin("height=\"636.0\"", m)              # grew: it went to a band
+            @test occursin("height=\"668.0\"", m)               # 636 + 20 + 12
+        end
+    end
+
     @testset "legend — no legend is byte-identical" begin
         withtmpsvgs(SVG_SQUARE, SVG_SQUARE) do paths
             base = montage(paths; output=nothing)
