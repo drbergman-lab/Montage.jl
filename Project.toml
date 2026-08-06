@@ -1,6 +1,6 @@
 name = "Montage"
 uuid = "b5316104-0607-4250-a2f2-009686a1a11b"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Daniel Bergman <danielrbergman@gmail.com> and contributors"]
 
 [weakdeps]
