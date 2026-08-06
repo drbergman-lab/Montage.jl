@@ -40,9 +40,60 @@ Satellites are auto-ringed around the focal panel; each is paired with a colorba
 off the focal plot entirely — falling back to an in-axis corner when the grid is full; you can also
 pass a position `Symbol` (`:rt`, `:lt`, …), an explicit grid cell `(row, col)`, or `nothing`.
 
+Set `focal_colorbar_label` to give the **focal** panel a colorbar of its own — for a focal plot
+encoding a continuous value rather than discrete categories. The focal callback must then return
+its plot, the same convention the satellites follow, and there are no labelled series for a legend
+to read, so pass `legend=nothing` with it.
+
 Output follows the same rules as the other verbs (writes `tableau.png` by default — CairoMakie also
 renders `.svg`/`.pdf`; `output=nothing` returns the Makie `Figure`; `overwrite` guards existing
 files).
+
+## Choosing which cells appear, and what their colour means
+
+For the PhysiCell methods, the focal cell layer is configurable in two independent ways.
+
+**Which cells** — `cell_types` selects by name (validated against the cell types the *config*
+defines, so asking for one that is momentarily absent is not an error), and `include_dead=false`
+drops cells flagged dead:
+
+```julia
+tableau(Simulation, 1; cell_types = ["nk", "caf"])       # just these two
+tableau(Simulation, 1; include_dead = false)             # live cells only
+```
+
+**What the colour encodes** — `color` names any column of the cells table (see
+`cellLabels(snapshot)` for the ~130 available). The column's type picks the visual mode:
+
+| `color` | mode | key |
+|---|---|---|
+| `:cell_type_name` (default), or any string/bool column | categorical | one labelled series per value + a **legend** |
+| `:pressure`, `:damage`, `:total_volume`, … | continuous | a `cell_colormap` ramp + a **colorbar** |
+
+```julia
+tableau(Simulation, 1; color = :pressure)                          # ramp + colorbar
+tableau(Simulation, 1; color = :current_phase, color_mode = :categorical)
+```
+
+`color_mode` (`:auto`, `:categorical`, `:continuous`) overrides the choice — needed for
+numeric-but-discrete columns such as `:current_phase`, which look wrong on a continuous ramp.
+Note `cell_colormap` is the *cells'* ramp and is deliberately separate from `colormap`, which
+belongs to the substrate heatmaps.
+
+Colours are chosen to make figures comparable with one another:
+
+- **Cells are drawn in PhysiCell's own colours**, read from the run's `legend.svg`. So a `tableau`
+  and a `montage`/`storyboard` of the same simulation agree, and the types keep the colours you
+  already recognise from PhysiCell's output rather than being reassigned from Makie's palette.
+- **Where a colour is not known** (a run without `legend.svg`, or a categorical column that is not
+  a cell type), palette slots are used and pinned to the config's cell-type list rather than to
+  plotting order — so `caf` keeps the same colour whether you plot every type or filter down to
+  `["caf", "nk"]`.
+- **In a movie, a continuous `color` gets a globally fixed colorrange** — its min/max across every
+  frame, computed *after* filtering — so the scale is comparable frame to frame, exactly as the
+  substrate heatmaps already are. This matters more than it sounds: at `t = 0` a quantity like
+  pressure is often uniformly zero, which a per-frame scale would render as a meaningless full-range
+  spread.
 
 ## Animating over time
 

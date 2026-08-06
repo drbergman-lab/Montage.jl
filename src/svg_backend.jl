@@ -109,41 +109,47 @@ function _svgLegend(entries, x0::Real, y0::Real, avail_w::Real; font_size::Real)
 end
 
 """
-    _normalizeLegend(legend, legend_file) -> (legend_or_nothing, position)
+    _normalizeLegend(legend) -> legend_or_nothing
 
-Split the single user-facing `legend` keyword into the two things [`_svgGrid`](@ref) needs:
-*what* to draw and *where*.
+Normalize the `legend` keyword, which says **what** to draw. Where it goes is the separate
+`legend_position` keyword — the two are orthogonal, so any content can take any placement.
 
 | `legend` | result |
 |---|---|
-| `nothing` / `false` | `(nothing, :auto)` — no legend |
-| a vector of `(label, color)` entries | `(it, :auto)` — drawn |
-| a path or SVG string | `(it, :auto)` — nested as-is |
-| `:auto` | `(legend_file, :auto)` — whatever the caller resolved, or `nothing` |
-| `:bottom` / `:top` / `(row, col)` / `(row, col, span)` | `(legend_file, it)` — errors when there is no legend |
+| `nothing` / `false` | `nothing` — no legend |
+| a vector of `(label, color)` entries | the entries, drawn (empty ⇒ no legend) |
+| a path or SVG string | the source, nested as-is |
+| `:auto` | `nothing` in the core — it means "discover from the data source", which only the PhysiCell extensions can do; they resolve it to entries before calling in |
 """
-# An empty entry list is not a legend — it must collapse to `nothing`, or `_svgGrid` reserves a
-# band with nothing in it (a visible blank strip under a single-row storyboard).
-_legendOrNothing(x) = (x isa AbstractVector && isempty(x)) ? nothing : x
-
-# A grid-cell placement: `(row, col)`, or `(row, col, span)` to run across several free cells.
-_isLegendCell(x) = x isa Tuple && 2 <= length(x) <= 3 && all(v -> v isa Integer, x)
-
-function _normalizeLegend(legend, legend_file)
-    (legend === nothing || legend === false) && return (nothing, :auto)
-    legend isa AbstractString && return (String(legend), :auto)
-    legend isa AbstractVector && return (_legendOrNothing(legend), :auto)
-    legend === :auto && return (_legendOrNothing(legend_file), :auto)
-    legend_file = _legendOrNothing(legend_file)
-    if legend === :bottom || legend === :top || _isLegendCell(legend)
-        legend_file === nothing && error(
-            "legend=$(repr(legend)) says where to put the legend but there is no legend to put " *
-            "there; pass `legend=<entries or an SVG path>`, or `legend_file=…` alongside it")
-        return (legend_file, _isLegendCell(legend) ? map(Int, legend) : legend)
-    end
+function _normalizeLegend(legend)
+    (legend === nothing || legend === false || legend === :auto) && return nothing
+    legend isa AbstractString && return String(legend)
+    legend isa AbstractVector && return isempty(legend) ? nothing : legend
     error("unrecognized legend $(repr(legend)); expected nothing, `(label, color)` entries, an " *
-          "SVG path, :auto, :bottom, :top, or a (row, col) grid cell")
+          "SVG path, or :auto. To place the legend, use `legend_position` " *
+          "(:auto, :bottom, :top, or a (row, col) cell)")
 end
+
+"""
+    _cellTypeLegend(folders) -> Vector{Tuple{String,String}}
+
+Core-declared hook: the `(label, colour)` entries describing the cell types in one or more
+simulation output folders. Implemented by `MontagePhysiCellOutputExt`, which owns the
+PhysiCellOutput weakdep and knows the output-folder layout.
+
+Declared here, rather than privately in that extension, so the CairoMakie extensions can reach it
+too — `tableau` uses it to colour cells with **PhysiCell's own** colours, so a `tableau` and a
+`montage`/`storyboard` of the same run agree. Extensions cannot `using` one another, so a
+core-owned hook is the supported way to share this.
+
+**Declared with no methods on purpose.** Core never calls it, and every caller is an extension
+that necessarily loads `MontagePhysiCellOutputExt` alongside itself (activating a
+CairoMakie+PhysiCellOutput extension implies PhysiCellOutput is present). Giving it an untyped
+fallback here instead would make the extension's identically-signed method an *overwrite* rather
+than an addition, which Julia rejects during precompilation — the reason `_recordSVGMovie` and
+`_montage` take a deliberately more general fallback signature than their extension methods.
+"""
+function _cellTypeLegend end
 
 """
     _svgGrid(panels; ncols, panel_width, title_height, pad,

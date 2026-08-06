@@ -30,6 +30,7 @@ function _tableauFigure(focal, satellites;
                         focal_title="",                     # String or an Observable (animated)
                         satellite_titles::AbstractVector=String[],
                         colorbar_labels::AbstractVector=String[],
+                        focal_colorbar_label=nothing,
                         xlims=nothing, ylims=nothing, size=(1000, 1000),
                         legend=:auto)
     fig = CairoMakie.Figure(; size = size)
@@ -40,8 +41,19 @@ function _tableauFigure(focal, satellites;
         CairoMakie.limits!(ax, xlims[1], xlims[2], ylims[1], ylims[2])
     label(v, i) = i <= length(v) ? v[i] : ""
 
-    fax = CairoMakie.Axis(fig[fpos[1], fpos[2]]; title = focal_title, aspect = CairoMakie.DataAspect())
-    focal(fax)
+    # The focal panel is a bare Axis unless it needs a colorbar of its own, in which case it
+    # gets the same Axis-plus-Colorbar GridLayout the satellites use.
+    fax = if focal_colorbar_label === nothing
+        ax = CairoMakie.Axis(fig[fpos[1], fpos[2]]; title = focal_title, aspect = CairoMakie.DataAspect())
+        focal(ax)
+        ax
+    else
+        gl = fig[fpos[1], fpos[2]] = CairoMakie.GridLayout()
+        ax = CairoMakie.Axis(gl[1, 1]; title = focal_title, aspect = CairoMakie.DataAspect())
+        plt = focal(ax)
+        CairoMakie.Colorbar(gl[1, 2], plt; label = focal_colorbar_label)
+        ax
+    end
     share!(fax)
 
     for i in 1:n
@@ -87,8 +99,8 @@ end
 
 """
     tableau(focal, satellites; focal_title="", satellite_titles=[], colorbar_labels=[],
-            xlims=nothing, ylims=nothing, legend=:auto, size=(1000, 1000),
-            output="tableau.png", overwrite=false)
+            focal_colorbar_label=nothing, xlims=nothing, ylims=nothing, legend=:auto,
+            size=(1000, 1000), output="tableau.png", overwrite=false)
 
 Data-agnostic tableau (CairoMakie extension): a `focal` panel centered with `satellites`
 auto-ringed around it, each satellite paired with a colorbar, all sharing `xlims`/`ylims`.
@@ -99,6 +111,11 @@ each **returning the plot** its colorbar reads (e.g. a `heatmap!`). `satellite_t
 plots) is `:auto` (an empty grid cell, else an in-axis corner), a position `Symbol`
 (`:rt`, `:lt`, …), a grid cell `(row, col)`, or `nothing`. Writes to `output` by default
 (erroring if it exists unless `overwrite=true`); `output=nothing` returns the `Figure`.
+
+Set `focal_colorbar_label` to give the **focal** panel a colorbar too — for a focal plot that
+encodes a continuous value rather than discrete categories. `focal` must then return its plot,
+the same convention the satellites already follow. Such a plot has no labeled series, so pass
+`legend=nothing` alongside it.
 
 # Example
 ```julia
@@ -111,10 +128,11 @@ function Montage.tableau(focal::Function, satellites::AbstractVector;
                          focal_title="",                    # String or an Observable (animated)
                          satellite_titles::AbstractVector=String[],
                          colorbar_labels::AbstractVector=String[],
+                         focal_colorbar_label=nothing,
                          xlims=nothing, ylims=nothing, legend=:auto, size=(1000, 1000),
                          output::Union{Nothing,AbstractString}="tableau.png", overwrite::Bool=false)
     fig = _tableauFigure(focal, satellites; focal_title, satellite_titles,
-                         colorbar_labels, xlims, ylims, size, legend)
+                         colorbar_labels, focal_colorbar_label, xlims, ylims, size, legend)
     output === nothing && return fig
     Montage._assertWritable(output, overwrite)
     mkpath(dirname(abspath(String(output))))

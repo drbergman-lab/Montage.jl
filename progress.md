@@ -426,3 +426,100 @@ default. (Julia's `replace` likewise returns the same object when nothing matche
   wrapped into the free (2,2) cell with **identical dimensions** to no-legend; 64-sim montage →
   `filler` correctly included from the 12 sims that define it; movie legend identical in frames 1
   and 121; folder with no `legend.svg` → no legend.
+
+---
+
+## Session: `tableau` cell selection + colouring (2026-08-05)
+
+Branch `feature/tableau-cell-color` (stacked on `feature/svg-legend`). To-do items 2 ("use
+alternate data for coloring cells") and 3 ("filter cell types") for the data-driven verb, plus two
+corrections the user caught along the way.
+
+### The feature
+Two independent knobs on the focal cell layer: **which cells** (`cell_types`, `include_dead`) and
+**what colour means** (`color`, `color_mode`, `cell_colormap`). The interesting part is that
+colouring has **two visual modes needing different keys** — a categorical column wants one labelled
+series per value plus a Legend (the `cell_type_name` default, i.e. the pre-existing behaviour); a
+continuous column wants a single scatter plus a Colorbar. `color_mode` exists because
+`current_phase` is stored as `Float64`, so `:auto` reads it as continuous when it is really
+discrete. `cell_colormap` is separate from `colormap` (the substrates') so the two scales are
+independent.
+
+`_tableauFigure` gained `focal_colorbar_label`: the focal panel is wrapped in the same
+`Axis`-plus-`Colorbar` `GridLayout` the satellites already use, reading the plot the focal callback
+returns — reusing the documented "each returning the plot its colorbar reads" convention.
+
+### Correction 1 (user): the `legend` API conflated two things
+Branch 1 shipped `legend` meaning *either* content *or* placement, with a `legend_file` escape for
+the other half. The user spotted the consequence: passing your own entries **and** choosing a
+placement was only expressible as `legend=:bottom, legend_file=[…]` — entries inside a kwarg named
+"file". Fixed by making the axes orthogonal:
+
+| | before | after |
+|---|---|---|
+| what to draw | `legend` *or* `legend_file` | `legend` |
+| where it goes | `legend` (same kwarg) | `legend_position` |
+
+`legend_file` is gone; `_normalizeLegend` now normalizes content only; `:auto` means "discover from
+the run" and is resolved by the extension (`_resolveAuto`) **before** core is called, leaving
+`legend_position` free. Net: one fewer kwarg and the natural case is now the obvious spelling.
+
+### Correction 2 (user): tableau should use PhysiCell's own colours
+The first version left tableau on Makie's palette, so a montage legend (PhysiCell's
+greys/reds/yellows) and a tableau of the same run (Makie's blues/oranges) disagreed. The user's
+call — for PhysiCell specifically, carry PhysiCell's colours into tableau — is clearly right, and
+branch 1's `legend.svg` parser already produces exactly the needed type→colour map.
+
+Sharing it across extensions required the **core-hook pattern**: `_legendEntries` was promoted to
+core-declared `Montage._cellTypeLegend`, implemented in `MontagePhysiCellOutputExt`, now called by
+the CairoMakie extension too. Loading is guaranteed — activating a CairoMakie+PhysiCellOutput
+extension implies PhysiCellOutput is present. Verified: `tumor_epi` → grey `(0.502,0.502,0.502)`,
+`tumor_mes` → red, `caf` → yellow, `nk` → green, matching `legend.svg` exactly.
+
+`_parseSVGColor` handles the `rgb(r,g,b)` form PhysiCell can emit, which Makie cannot parse; named
+colours and hex pass through untouched.
+
+### Gotcha: a core hook must not have an identically-signed fallback
+First attempt declared the hook as `_cellTypeLegend(folders) = Tuple{String,String}[]` in core. The
+extension's `Montage._cellTypeLegend(folders)` then has the **same** signature, making it an
+*overwrite*, and Julia errors: *"Method overwriting is not permitted during Module
+precompilation."* The existing hooks avoid this by giving the core fallback a deliberately **more
+general** signature than the extension's method (`_recordSVGMovie`'s untyped args vs. the ext's
+typed ones; `_montage(::MontageBackend)` vs. `_montage(::MakieBackend)`). Since core never calls
+this one, the fix is a bare `function _cellTypeLegend end` with no methods at all.
+
+**Worth noting how this was nearly missed:** the core suite passed 112/112 while all three
+extensions were failing to precompile, because heavy deps stay out of that suite by design. After
+touching a core hook, load the extensions explicitly (`using Montage, PhysiCellOutput, CairoMakie`)
+and check for `✓` rather than `?` in the precompile output.
+
+### Two more things real data forced
+1. **Filtering silently recoloured the figure.** Makie assigns series colours by plotting order, so
+   `caf` was the third series in a full plot but the *first* under `cell_types=["caf","nk"]`. Fixed
+   by `_paletteOrder` + `Cycled` — slots come from the config's type list. Now largely subsumed by
+   using PhysiCell's colours, but it still covers non-cell-type categorical columns and runs
+   without a `legend.svg`.
+2. **Positions and colours cannot be separate Observables.** They must stay equal-length, and
+   updating them one at a time transiently mismatches — Makie's scatter rejects that. The
+   continuous movie path carries `(points, colours)` in **one** Observable with `lift`-derived
+   views. Verified across frames where the cell count changes 300 → 511.
+
+### Why the movie colorrange is global, and computed after filtering
+Pressure's per-frame ranges over `0:30:120` are `[(0,0), (0,4.17), (0,2.99), (0,3.0), (0,4.06)]` —
+frame 1 is **uniformly zero**, so a per-frame scale would render it as a meaningless full-range
+spread. Extracted frames 1 and 5 confirm both render correctly on the shared 0–4.17 scale.
+Filtering first matters too: unfiltered `(0, 4.171)` vs `tumor_epi` live-only `(0, 3.002)`.
+
+### Also picked up
+The `_assertWritable` message improved in `1b416f6` was **untested** — the assertion was only
+`occursin("already exists", …)`, which the old bare message also satisfied. Added assertions for
+`overwrite=true`, `output=`, and the offending path, so the actionable wording is pinned.
+
+### Verification
+- Core suite **112/112**, dependency-free; all three extensions precompile clean.
+- Scratch env (Montage-dev + PhysiCellOutput + CairoMakie) against `GeorgetownR01`: filtering counts
+  (`all=511`, `["nk","caf"]=200`, `include_dead=false` drops 29, scalar `"nk"=100`); bad type and bad
+  column both error helpfully; mode detection for `cell_type_name`/`dead`/`pressure`/`current_phase`;
+  six stills and three movies rendered and inspected; resolved colours read off the `Figure` to prove
+  PhysiCell colours and filter-stability; legend placement measured (`:top` legend at cy=30.7 with
+  panels at 95.4, `:bottom` at 397.7 with panels at 46.0, identical totals, own entries honoured).

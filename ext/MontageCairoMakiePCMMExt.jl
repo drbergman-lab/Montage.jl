@@ -40,6 +40,12 @@ Other kwargs: `substrates` (which get satellites, default all), `colormap`, `mar
 `overwrite=true`; for a still, `output=nothing` returns the Makie `Figure` (a movie needs a
 path). A `Simulation` object or a `PCMMOutput{Simulation}` is also accepted for `sim_id`.
 
+The cell layer is configurable: `color` selects the cell column that sets the colour
+(`:cell_type_name` by default → one labelled series per type plus a legend; a numeric column such
+as `:pressure` → a colormap plus a colorbar), `color_mode` forces categorical vs. continuous,
+`cell_colormap` is the cell ramp (separate from `colormap`, which is the substrates'), and
+`cell_types`/`include_dead` restrict which cells are drawn. See `tableau(::PhysiCellSnapshot)`.
+
 This is a thin adapter over the folder-path `tableau` — it resolves the simulation's output
 folder and delegates.
 
