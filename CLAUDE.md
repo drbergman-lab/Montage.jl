@@ -20,9 +20,9 @@ Montage.jl composes PhysiCell visualizations into intentionally-structured compo
 - **`storyboard`** — show one thing evolving over time (1-D ordered sequence of frames; e.g. time evolution of one simulation).
 - **`tableau`** — show how heterogeneous components of one state relate spatially (a focal panel with satellite panels around it; e.g. cell layer centered, substrate heatmaps surrounding it).
 
-Static vs. animated is an **orthogonal axis**: any verb can render a static figure or a movie (`Makie.record`). Movies are a first-class, headline feature.
+Static vs. animated is a mostly **orthogonal axis**: `montage` and `tableau` each render a still figure or a movie, while `storyboard` is deliberately static (it is the filmstrip). The two movie paths differ — `montage` rasterizes stitched SVG frames and encodes them with FFMPEG (`record`), whereas `tableau` uses `Makie.record`. Movies are a first-class, headline feature.
 
-**Status: not yet implemented.** `src/Montage.jl` is a `module Montage … end` stub. See [PRD.md](PRD.md) for the planned API and [progress.md](progress.md) for the design rationale and open decisions.
+**Status: implemented.** `montage` and `tableau` render both stills and movies; `storyboard` is static by design. See [README.md](README.md) Implementation Status for what exists, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for the design rationale (including approaches tried and rejected).
 
 ## Fixed Constraints (decided — do not relitigate)
 1. **Package name is `Montage.jl`; module is `Montage`.** The eponymous `montage` function inside module `Montage` is intentional.
@@ -115,22 +115,18 @@ A feature is complete when **all** are true:
 - Renderers available on the machine: `rsvg-convert`, `qlmanage`, `sips`.
 
 ## To-dos
-Architecture decisions are resolved (2026-07-21) — see [PRD.md](PRD.md) "Decisions". **All three verbs are built:** `montage` (SVG static + movie-of-movies via `record`), `storyboard` (static filmstrip), and `tableau` (CairoMakie: focal cell-scatter + satellite substrate heatmaps). Extensions: `MontageMovieExt`, `MontagePhysiCellModelManagerExt`, `MontageCairoMakieExt`, `MontageCairoMakiePCMMExt`. See [README.md](README.md) Implementation Status. Remaining:
+Architecture decisions are resolved — see [PRD.md](PRD.md). **All three verbs are built** and all
+six extensions exist: `MontageMovieExt`, `MontagePhysiCellOutputExt`,
+`MontagePhysiCellModelManagerExt`, `MontageCairoMakieExt`, `MontageCairoMakiePhysiCellOutputExt`,
+`MontageCairoMakiePCMMExt`. See [README.md](README.md) Implementation Status for the
+feature-by-feature record. Remaining:
 
 - **Handoff doc → PCMM session** ([PCMM_DOCS_HANDOFF.md](PCMM_DOCS_HANDOFF.md), untracked/excluded): all three verb sections ready. The maintainer carries it to a PCMM-repo session to add the "Visualizing simulations with Montage" page (PCMM is a read-only boundary here). See [progress.md](progress.md) "Docs locality".
 - **Time-based frame alignment** — movie follow-up: align by simulation time (nearest snapshot on a common grid), not just index.
-- **`dashboard` (name reserved — future verb).** A *live-updating / interactive* counterpart to `tableau`: the same Observable-driven layout engine (`_tableauFigure`), but driven by a live source rather than a fixed frame loop — e.g. polling a running simulation's output as snapshots land (a monitor), or interactive controls like a time slider (likely an interactive Makie backend: GLMakie/WGLMakie). Keep the split clean: `tableau` = the composed static/movie figure; `dashboard` = the live view. (Decided 2026-07-23 — resolves the `tableau` vs. `dashboard` naming question by making them *different* verbs.)
-- **(Decided against)** a `:makie` backend for `montage`/`storyboard` — no added value; those verbs stay SVG-only.
+- **Release** — bump `version` in `Project.toml` and `using LocalRegistry; register()`. Montage v0.1.0 is already in BergmanLabRegistry and CI/TagBot are wired to it, so a new version is just a tag away. Maintainer's call, not a Claude action (publishing is outward-facing).
+- **`dashboard` (name reserved — future verb).** A live-updating counterpart to `tableau`. **Revisit the premise first:** this to-do describes an Observable-driven GLMakie/WGLMakie view, but the dashboard that actually shipped (PhysiCellDashboard.jl) is HTTP + browser serving static PNGs from `Montage.tableau`, with interactivity client-side. CairoMakie provides no interactivity either way, so the two are not in tension — but the verb should be designed around what the dashboard really does. See the 2026-08-05 progress entry.
 
-### Planned: PhysiCell support stays *in Montage* as extensions (no separate package)
-**Goal:** support PhysiCell users who don't use PCMM — call the verbs on an **output-folder path** (or several) — while everyone still types just `using Montage`. (Rejected `PhysiCellMontage.jl`: the clunky name isn't worth it, and extensions decouple *what a user types* from *where code lives*, so a separate package is unnecessary. `PhysiCellOutput.jl` **v0.1.0** now exists in BergmanLabRegistry.)
-
-**Structure — two front doors, both hosted as Montage extensions; core stays pure viz (extensions are weakdep-gated):**
-- **Folder-path front door** — `MontagePhysiCellOutputExt` (weakdep `PhysiCellOutput`): `montage(PhysiCellOutput(path))`, `storyboard(PhysiCellOutput(path))`, and (adding CairoMakie) `tableau(PhysiCellOutput(path))`. Use the package-owned `PhysiCellOutput` type — a bare `montage("path"::String)` would be type piracy. This ext holds **all** the real logic: glob `final.svg`/`snapshot*.svg`, read cells/substrates/mesh via `PhysiCellOutput`, build the scatter/heatmap callbacks.
-- **PCMM id front door** — `MontagePhysiCellModelManagerExt` (weakdeps `[PhysiCellModelManager, PhysiCellOutput]`): a **thin adapter that delegates** — `montage(::Type{Simulation}, ids) = montage(PhysiCellOutput.(folder.(ids)))`, `tableau(::Type{Simulation}, id) = tableau(PhysiCellOutput(folder(id)))`, where `folder(id) = joinpath(trialFolder(Simulation, id), "output")`. **Zero duplication** — id→folder resolution is the only PCMM-specific bit; everything downstream is the folder-path code.
-
-**Sharing shared logic between the two extensions:** delegation (above) means it lives once in the folder-path ext. For any bit that genuinely can't delegate, use the **core-hook pattern**: declare `function _foo end` in core, implement it in whichever ext owns the needed dep, call it from the others (same pattern as `record`/`_recordSVGMovie`).
-
-**Refactor the existing extensions to this model:** today's `MontagePhysiCellModelManagerExt` + `MontageCairoMakiePCMMExt` read via PCMM's `PhysiCellSnapshot`; switch them to **read via `PhysiCellOutput`** and delegate to the new folder-path methods. One reader path, not two. `montage(::Type{Simulation}, …)` **stays in Montage**, so this is *not* a breaking change and doesn't gate registration.
-
-**Trade-off (accepted):** Montage's repo carries PhysiCell-aware `ext/` code (not 100% PhysiCell-free) — the price of the short name. Non-PhysiCell users are unaffected (those extensions never load). **Near-term:** folder-path `montage`/`storyboard` need only SVG globbing; folder-path `tableau` uses `PhysiCellOutput`'s cell/substrate reader.
+### Decided against (do not relitigate)
+- **A `:makie` backend for `montage`/`storyboard`** — no added value; those verbs stay SVG-only. The `backend` kwarg + `MakieBackend` selector remain vestigial scaffolding on them (candidate for a future cleanup).
+- **A separate `PhysiCellMontage.jl`** — the clunky name isn't worth it; extensions decouple *what a user types* from *where code lives*. **Done:** PhysiCell support ships as Montage extensions, so everyone still types `using Montage`. Two front doors — folder paths via `MontagePhysiCellOutputExt` (which holds the real logic) and simulation ids via `MontagePhysiCellModelManagerExt` (a thin adapter that resolves id → folder and delegates). Both read through `PhysiCellOutput`, so there is one reader path, not two.
+- **A Plots.jl backend, to shrink PhysiCellDashboard's compiled size** — measured and declined. The no-plotting floor is already 700 MB, above the 500 MB target, so no plotting library could reach it; swapping saves 22% (1.63 GB → 1.27 GB) and Plots itself costs 570 MB. Remaining size levers are `filter_stdlibs`, artifact trimming, and the PhysiCellOutput dependency chain — none of them Montage's problem. See the 2026-08-05 progress entry for the numbers.

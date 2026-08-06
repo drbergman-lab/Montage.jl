@@ -7,11 +7,11 @@
 
 Compose PhysiCell visualizations into intentionally-structured composite figures — and movies.
 
-> **Status: not yet implemented.** This README describes the intended design. See [Implementation Status](#implementation-status) for what actually exists today, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for design rationale.
+All three verbs are implemented: `montage` and `tableau` render stills and movies, `storyboard` is static by design. See [Implementation Status](#implementation-status) for the feature-by-feature record, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for design rationale.
 
 ## What it does
 
-Montage gives you three verbs for the three distinct things you might want a composite figure to say. Static or animated is a separate choice — any verb can render a still figure or a movie.
+Montage gives you three verbs for the three distinct things you might want a composite figure to say. Static or animated is a mostly separate choice: `montage` and `tableau` each render a still figure or a movie, while `storyboard` is deliberately static — it *is* the filmstrip.
 
 | Verb | Use it to… | Looks like |
 |------|-----------|-----------|
@@ -25,7 +25,7 @@ Montage gives you three verbs for the three distinct things you might want a com
 
 **Movies** (a headline feature): a `montage` movie animates every panel through time simultaneously — compare dynamics across simulations, or play one simulation's own frames; a `tableau` movie animates the whole composed scene together. (`storyboard` is deliberately static — the still filmstrip.)
 
-## Intended usage (subject to change — see [open decisions](PRD.md#open-decisions-to-confirm-with-the-user-before-substantial-implementation))
+## Usage
 
 ```julia
 using Montage
@@ -64,10 +64,15 @@ The core never depends on PhysiCellModelManager or CairoMakie — install and us
 
 ## Installation
 
-```julia
-using Pkg
-Pkg.add(url="https://github.com/drbergman-lab/Montage.jl")
+```julia-repl
+pkg> registry add https://github.com/drbergman-lab/BergmanLabRegistry
+pkg> add Montage
 ```
+
+Montage is registered in the [BergmanLabRegistry](https://github.com/drbergman-lab/BergmanLabRegistry),
+alongside [PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelManager.jl) and
+[PhysiCellOutput.jl](https://github.com/drbergman-lab/PhysiCellOutput.jl), so the registry only
+needs adding once.
 
 ## Implementation Status
 

@@ -655,3 +655,80 @@ drawn), or excluded cells would stretch the ramp.
 - A recoloured figure keeps PhysiCell's own colours for cells with no data value, which mixes two
   colour meanings in one panel. Rare (it needs an id present in the SVG but absent from the table)
   and warned about, but a stricter option could drop those cells instead.
+
+---
+
+## Session: docs, install instructions, and two rejected approaches (2026-08-05)
+
+Branch `feature/docs-registry`. To-do items 4 and 5, plus recording two decisions so they are not
+re-explored.
+
+### Item 4 — tableau vector output: verified, and the caveat is not what I expected
+`.svg` and `.pdf` already worked (`CairoMakie.save` handles both), so this was measurement and
+documentation. For one cell layer plus one substrate (511 cells, a 50×50 voxel grid):
+
+| format | size |
+|---|---:|
+| `.png` | 154 KB |
+| `.pdf` | **52 KB** |
+| `.svg` | 739 KB |
+
+Two findings changed what the docs say:
+
+- **`.pdf` is the smallest of the three**, not the largest — it is vector *and* stream-compressed,
+  whereas SVG is uncompressed text. So the publication recommendation is PDF, which is the opposite
+  of the "vector costs you size" caveat I had planned to write.
+- **CairoMakie's SVG contains zero `<text>` elements.** Text is converted to glyph outlines, so
+  labels are *not* editable in Illustrator. This matters because editability is the stated reason
+  the stitched verbs emit real `<text>` — so `montage`/`storyboard` and `tableau` differ on exactly
+  the property the user cares about, and the docs now say which path gives editable text.
+- The 739 KB is dominated by **~2500 `<path>` elements for the 50×50 heatmap**, not the cell
+  scatter as assumed. A finer mesh inflates it faster than more cells do.
+
+A tableau movie to `.svg` fails inside Makie's recorder (`Video type svg not known`) rather than
+producing something odd — acceptable, though the message is Makie's rather than ours.
+
+### Item 5 — install instructions and stale status
+Montage v0.1.0 is **already registered** in BergmanLabRegistry, and `CI.yml` + `TagBot.yml` were
+already wired to it, so only the install text was wrong. Both README and the docs index now use the
+house style (`registry add …` then `add Montage`), matching PhysiCellOutput's README.
+
+Four "not yet implemented" claims were stale enough to actively mislead — README's status
+blockquote, README's "Intended usage (subject to change — see open decisions)" heading (whose
+`PRD.md#open-decisions-…` anchor no longer existed), PRD's Status line, and CLAUDE.md's. All
+corrected. CLAUDE.md's To-dos also still listed four extensions (there are six) and a "Planned"
+section describing the folder-path extension work that has since shipped; both brought current.
+
+Release itself — version bump plus `LocalRegistry.register()` — stays a maintainer action, since
+publishing is outward-facing.
+
+### Rejected: a Plots.jl backend to shrink PhysiCellDashboard's compiled size
+The motivation was real: PhysiCellDashboard.jl compiles to 1.63 GB, much of it CairoMakie, with a
+target under 500 MB. Measured across three builds:
+
+| build | size | cost over floor |
+|---|---:|---|
+| floor — no plotting stack at all | **700 MB** | — |
+| floor + Plots.jl | 1.27 GB | +570 MB |
+| current — CairoMakie | 1.63 GB | +930 MB |
+
+**The floor alone exceeds the target**, so no plotting library could have met it — which is why
+measuring the floor first was worth more than any amount of Plots.jl prototyping. Swapping buys 22%
+and still lands at 1.27 GB, and Plots is itself a 570 MB dependency, so it is not a lightweight
+alternative — just a somewhat lighter heavy one. Not worth maintaining a second backend.
+
+Where the size actually is, for anyone revisiting: the sysimage dominates (1.2 GB of the CairoMakie
+build; artifacts 234 MB; libLLVM/OpenBLAS ~110 MB), and the 700 MB floor is HTTP + JSON3 + LightXML +
+PhysiCellOutput, which drags in DataFrames, MAT (→HDF5→MPI), Graphs and MetaGraphsNext. Untried
+levers are `filter_stdlibs=true`, artifact trimming (an 18 MB MPI artifact in a plotting app looks
+wrong), and that dependency chain — **none of them Montage's problem**.
+
+### Corrected: the interactivity premise behind the `dashboard` verb
+Related finding, recorded because CLAUDE.md's `dashboard` to-do rests on it. PhysiCellDashboard's
+*only* use of the plotting stack is `Montage.tableau` rendering a static PNG served over HTTP — no
+Observables, no GLMakie; its own build script calls it "mostly HTTP serving + Cairo rendering". Of
+the four interactive features imagined for it (swap cell views, change 2-D bounds, toggle
+heatmap/contour, rotate 3-D), the first three are server round-trips that need no particular
+plotting library, and the fourth needs WebGL — which **CairoMakie cannot do either**. So the
+reserved `dashboard` verb should be designed around the browser-based architecture that actually
+shipped, not the Observable-driven one the to-do describes.

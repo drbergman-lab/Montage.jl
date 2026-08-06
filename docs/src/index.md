@@ -25,10 +25,15 @@ It gives you three verbs for the three distinct things a composite figure can sa
 
 ## Installation
 
-```julia
-using Pkg
-Pkg.add(url="https://github.com/drbergman-lab/Montage.jl")
+```julia-repl
+pkg> registry add https://github.com/drbergman-lab/BergmanLabRegistry
+pkg> add Montage
 ```
+
+Montage is registered in the [BergmanLabRegistry](https://github.com/drbergman-lab/BergmanLabRegistry),
+alongside [PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelManager.jl) and
+[PhysiCellOutput.jl](https://github.com/drbergman-lab/PhysiCellOutput.jl), so the registry only
+needs adding once.
 
 ## Quick start
 
