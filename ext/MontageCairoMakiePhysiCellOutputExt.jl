@@ -42,8 +42,18 @@ _isMovieIndex(index) = index === :all || index isa AbstractVector
 # scatter with a colormap plus a Colorbar. `color_mode` forces the choice for numeric-but-discrete
 # columns such as `current_phase`, which look wrong on a continuous ramp.
 
-"""Cell types the model defines, per the snapshot's config — not just those currently alive."""
-_configuredTypes(snap) = sort!(collect(values(PhysiCellOutput.cellTypeToNameDict(snap))))
+"""
+Cell types the model defines, per the snapshot's config — not just those currently alive.
+
+Ordered as the config orders them, taken from the run's `legend.svg` when it has one, so a tableau's
+legend lists types in the same sequence a `montage`/`storyboard` legend does. Falls back to the
+snapshot XML (sorted, since the dict carries no order) when there is no `legend.svg`.
+"""
+function _configuredTypes(snap)
+    entries = Montage._cellTypeLegend((snap.folder,))
+    isempty(entries) || return [e[1] for e in entries]
+    return sort!(collect(values(PhysiCellOutput.cellTypeToNameDict(snap))))
+end
 
 _asNameVector(x::Union{AbstractString,Symbol}) = [String(x)]
 _asNameVector(x) = String.(collect(x))
@@ -98,8 +108,11 @@ function _colorColumn(cells, color)
     return col
 end
 
-# A range that Makie will accept even when the data is constant.
-_safeRange(vals) = (lo = minimum(vals); hi = maximum(vals); (lo, lo == hi ? lo + one(lo) : hi))
+# A range Makie will accept even when the data is constant *or empty*. Empty is legitimate: a
+# configured cell type can be absent from a snapshot, or from some frames of a movie, and filtering
+# to it must produce an empty panel rather than an error mid-render.
+_safeRange(vals) = isempty(vals) ? (0.0, 1.0) :
+    (lo = minimum(vals); hi = maximum(vals); (lo, lo == hi ? lo + one(lo) : hi))
 
 """
     _paletteOrder(cells, col, snap) -> Vector{String}
@@ -112,7 +125,8 @@ the third series (and third colour) in a full plot but the first in
 """
 function _paletteOrder(cells, col::Symbol, snap)
     present = unique(string.(getproperty(cells, col)))
-    col === :cell_type_name && return sort!(union(_configuredTypes(snap), present))
+    # `union` keeps the first argument's order, so config order wins and any extra value is appended
+    col === :cell_type_name && return union(_configuredTypes(snap), sort!(present))
     return sort!(present)
 end
 
@@ -174,8 +188,9 @@ function _tableauStill(snap; substrates, colormap, markersize, legend, size, out
         order = _paletteOrder(cells, col, snap)          # colours fixed regardless of filtering
         pc = _physiCellPalette(col, snap.folder)         # PhysiCell's own colours when available
         svals = string.(vals)
+        drawn_vals = Set(svals)
         cb = function (ax)
-            for v in sort(unique(svals))
+            for v in filter(in(drawn_vals), order)      # palette order == config order
                 m = svals .== v
                 CairoMakie.scatter!(ax, xs[m], ys[m]; label = v, color = _seriesColor(pc, order, v),
                                     markersize = markersize)
@@ -310,8 +325,12 @@ function _tableauMovie(folder, frames; substrates, colormap, markersize, legend,
     local focal, focal_colorbar_label, setcells!
     if categorical
         # One series per value, over the union across frames, so colours and the legend are stable.
-        all_vals = sort(unique(string.(allvals)))
-        order = _paletteOrder(snaps[1].cells, col, snaps[1])
+        # Order over *every* frame's values, not just the first: a value that appears only later
+        # would otherwise miss the palette and collide on Cycled(1).
+        seen = unique(string.(allvals))
+        order = col === :cell_type_name ? union(_configuredTypes(snaps[1]), sort!(copy(seen))) :
+                                          sort!(copy(seen))
+        all_vals = filter(in(Set(seen)), order)
         pc = _physiCellPalette(col, folder)
         posobs = Dict(v => CairoMakie.Observable(CairoMakie.Point2f[]) for v in all_vals)
         setcells! = function (s, m)
