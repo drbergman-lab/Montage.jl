@@ -81,9 +81,13 @@ montage(["a/final.svg", "b/final.svg"];
         legend = [("mine", "purple")],
         legend_position = :bottom)
 
-# recolour one panel without touching the file on disk
-Panel("a/final.svg"; transform = svg -> replace(svg, "fill=\"red\"" => "fill=\"purple\""))
+# recolour just the first panel, without touching the file on disk
+montage([Panel("a/final.svg"; transform = svg -> replace(svg, "fill=\"red\"" => "fill=\"purple\"")),
+         Panel("b/final.svg")])
 ```
+
+The transform runs when a panel is *placed*, so it takes effect only through a verb — constructing a
+`Panel` on its own does nothing.
 
 The default is `identity`, which is free — it returns the very same string object, so an
 untransformed composition is byte-identical to one built with no transform support at all. For a

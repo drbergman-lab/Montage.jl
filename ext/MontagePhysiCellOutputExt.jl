@@ -136,7 +136,8 @@ end
     _keptLegend(entries, cell_types) -> entries
 
 Narrow the legend to the cell types actually kept, so a filtered figure's key matches what is on
-screen instead of advertising types that were removed.
+screen instead of advertising types that were removed. Applies only to a discovered (`:auto`)
+legend — an explicit one is the caller's own and is left alone.
 """
 _keptLegend(entries, cell_types) =
     cell_types === nothing ? entries :
@@ -175,7 +176,8 @@ you chose. In a movie the legend is drawn into every frame.
 
 `cell_types` (a name or vector of names) and `include_dead=false` restrict which cells are drawn,
 by dropping the non-matching cell groups from each snapshot SVG — no re-rendering, and PhysiCell's
-"N agents" label is corrected to the number actually shown. The legend narrows to the kept types.
+"N agents" label is corrected to the number actually shown. A `legend=:auto` legend narrows to the
+kept types; an explicit `legend` — your own entries, or a file — is used exactly as given.
 
 All other keywords pass through to the core verb (`output`, `overwrite`, `panel_width`,
 `framerate`, …).
@@ -253,8 +255,8 @@ times through `title`.
 `cell_types` and `include_dead` restrict which cells are drawn, as in `montage`.
 
 A **cell-type legend is included by default** (`legend=:auto`), from the run's `output/legend.svg`,
-narrowed to the kept cell types. Since a filmstrip is a single row with no spare cell, it lands in
-a band below; pass
+narrowed to the kept cell types (an explicit `legend` is used as given). Since a filmstrip is a
+single row with no spare cell, it lands in a band below; pass
 `legend=nothing` to suppress it. See `montage` for the other `legend` forms.
 """
 function Montage.storyboard(seq::PhysiCellSequence;

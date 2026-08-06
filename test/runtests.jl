@@ -205,6 +205,21 @@ end
         @test Montage._frameTransform(f, 7) === f
     end
 
+    @testset "Panel transform — per-frame form rejected on a still panel" begin
+        withtmpsvgs(SVG_SQUARE) do paths
+            # a Vector is the movie form; on a still panel it used to surface as a bare
+            # "Vector is not callable" MethodError
+            err = try
+                montage([Panel(paths[1]; transform = [identity, identity])]; output=nothing)
+            catch e
+                sprint(showerror, e)
+            end
+            @test occursin("Vector of 2 functions", err)
+            @test occursin("movie panel", err)
+            @test occursin("single function", err)
+        end
+    end
+
     @testset "Panel transform — applied when stitching" begin
         withtmpsvgs(SVG_SQUARE, SVG_SQUARE) do paths
             plain = montage(paths; output=nothing)

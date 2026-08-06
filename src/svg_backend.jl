@@ -191,6 +191,9 @@ function _svgGrid(panels::AbstractVector{Panel};
         p.content isa AbstractString ||
             error("the :svg backend needs an SVG file path per panel; got $(typeof(p.content))")
         isfile(p.content) || error("SVG file not found: $(p.content)")
+        p.transform isa AbstractVector && error(
+            "this panel's transform is a Vector of $(length(p.transform)) functions, which is the " *
+            "per-frame form for a movie panel; a still panel takes a single function")
         # `transform` edits the panel's contents before placement; `identity` is a no-op that
         # returns the same object, so an untransformed grid is byte-identical.
         text = p.transform(read(p.content, String))
