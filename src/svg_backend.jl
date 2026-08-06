@@ -120,11 +120,14 @@ Split the single user-facing `legend` keyword into the two things [`_svgGrid`](@
 | a vector of `(label, color)` entries | `(it, :auto)` — drawn |
 | a path or SVG string | `(it, :auto)` — nested as-is |
 | `:auto` | `(legend_file, :auto)` — whatever the caller resolved, or `nothing` |
-| `:bottom` / `:top` / `(row, col)` | `(legend_file, it)` — errors when there is no legend |
+| `:bottom` / `:top` / `(row, col)` / `(row, col, span)` | `(legend_file, it)` — errors when there is no legend |
 """
 # An empty entry list is not a legend — it must collapse to `nothing`, or `_svgGrid` reserves a
 # band with nothing in it (a visible blank strip under a single-row storyboard).
 _legendOrNothing(x) = (x isa AbstractVector && isempty(x)) ? nothing : x
+
+# A grid-cell placement: `(row, col)`, or `(row, col, span)` to run across several free cells.
+_isLegendCell(x) = x isa Tuple && 2 <= length(x) <= 3 && all(v -> v isa Integer, x)
 
 function _normalizeLegend(legend, legend_file)
     (legend === nothing || legend === false) && return (nothing, :auto)
@@ -132,11 +135,11 @@ function _normalizeLegend(legend, legend_file)
     legend isa AbstractVector && return (_legendOrNothing(legend), :auto)
     legend === :auto && return (_legendOrNothing(legend_file), :auto)
     legend_file = _legendOrNothing(legend_file)
-    if legend === :bottom || legend === :top || legend isa Tuple{Integer,Integer}
+    if legend === :bottom || legend === :top || _isLegendCell(legend)
         legend_file === nothing && error(
             "legend=$(repr(legend)) says where to put the legend but there is no legend to put " *
             "there; pass `legend=<entries or an SVG path>`, or `legend_file=…` alongside it")
-        return (legend_file, legend isa Tuple ? (Int(legend[1]), Int(legend[2])) : legend)
+        return (legend_file, _isLegendCell(legend) ? map(Int, legend) : legend)
     end
     error("unrecognized legend $(repr(legend)); expected nothing, `(label, color)` entries, an " *
           "SVG path, :auto, :bottom, :top, or a (row, col) grid cell")

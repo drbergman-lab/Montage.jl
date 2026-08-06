@@ -8,9 +8,10 @@
 """
 Font size (px) of the bold panel titles drawn by `_svgGrid`.
 
-Also the default target for legend scaling: a legend is scaled so *its* text renders at this
-size, matching the title text. Lives here (not in `svg_backend.jl`) because `MontageSpec`'s
-old-arity constructor defaults to it, and `types.jl` is included first.
+Also the default size for a **drawn** legend's text, so legend and titles match. (A legend given
+as an SVG *file* is not rescaled to it — that one is placed at its natural size.) Lives here rather
+than in `svg_backend.jl` because `MontageSpec`'s old-arity constructor defaults to it, and
+`types.jl` is included first.
 """
 const _TITLE_FONT_SIZE = 22
 

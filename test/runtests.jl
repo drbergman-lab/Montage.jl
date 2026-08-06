@@ -211,6 +211,8 @@ end
         @test_throws ErrorException Montage._normalizeLegend(:bottom, Tuple{String,String}[])
         @test Montage._normalizeLegend(:bottom, "leg.svg") == ("leg.svg", :bottom)
         @test Montage._normalizeLegend((2, 1), "leg.svg") == ("leg.svg", (2, 1))
+        # the (row, col, span) form _svgGrid documents must actually reach it
+        @test Montage._normalizeLegend((2, 1, 2), "leg.svg") == ("leg.svg", (2, 1, 2))
         # drawn entries pass through; an empty entry list means no legend
         ents = [("a", "red")]
         @test Montage._normalizeLegend(ents, nothing) == (ents, :auto)
