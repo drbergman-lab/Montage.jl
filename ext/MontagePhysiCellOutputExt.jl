@@ -207,8 +207,16 @@ function _cellValues(folder, index, column)
     cells = snap.cells
     col = Symbol(column)
     col in propertynames(cells) || error(
-        "no cell column $(repr(col)) to color by; call `cellLabels` for the available columns")
-    return Dict(Int(i) => Float64(v) for (i, v) in zip(cells.ID, getproperty(cells, col)))
+        "no cell column $(repr(col)) to color by; call `cellLabels(snapshot)` for the available " *
+        "columns")
+    vals = getproperty(cells, col)
+    # These verbs map a value onto a continuous ramp, so the column has to be numeric. Without this
+    # check a categorical column fails as a bare `MethodError` from `Float64("tumor_epi")`.
+    eltype(vals) <: Real || error(
+        "cannot color by $(repr(col)): its values are $(eltype(vals)), and the SVG verbs map a " *
+        "*numeric* column onto a colour ramp. For a categorical column (cell type, phase, …) use " *
+        "`tableau`, which draws one labelled series per value.")
+    return Dict(Int(i) => Float64(v) for (i, v) in zip(cells.ID, vals))
 end
 
 """
@@ -362,7 +370,6 @@ function Montage.montage(seqs::AbstractVector{<:PhysiCellSequence};
                          legend = :auto, cell_types = nothing, include_dead::Bool = true,
                          color = nothing, colormap = :viridis, kwargs...)
     if _isMovieIndex(index)
-        idxs = _frameIndices(seqs[1], index)
         states = [[(seq.folder, i) for i in _frameIndices(seq, index)] for seq in seqs]
         tfs, cbar = _colorPlan(color, states, cell_types, include_dead, colormap)
         panels = [Panel(_frameSVGs(seq, index); title = title(seq), transform = tf)
