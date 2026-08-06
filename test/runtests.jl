@@ -205,6 +205,10 @@ end
         @test Montage._normalizeLegend("a.svg", nothing) == ("a.svg", :auto)
         @test Montage._normalizeLegend(:auto, "leg.svg") == ("leg.svg", :auto)
         @test Montage._normalizeLegend(:auto, nothing) == (nothing, :auto)  # none resolved
+        # a discovery that found *nothing* must also mean no legend, not an empty entry list —
+        # an empty list would reserve a band with nothing in it
+        @test Montage._normalizeLegend(:auto, Tuple{String,String}[]) == (nothing, :auto)
+        @test_throws ErrorException Montage._normalizeLegend(:bottom, Tuple{String,String}[])
         @test Montage._normalizeLegend(:bottom, "leg.svg") == ("leg.svg", :bottom)
         @test Montage._normalizeLegend((2, 1), "leg.svg") == ("leg.svg", (2, 1))
         # drawn entries pass through; an empty entry list means no legend

@@ -23,9 +23,13 @@ function _montageSpec(panels::AbstractVector{Panel}; panel_width, title_height, 
     if !all(==(nframes), lens)
         @warn "montage movie: panels have differing frame counts; truncating to the shortest" counts=lens nframes
     end
+    # Resolve a legend *file* to its text once. Otherwise every frame re-reads it through
+    # `_svgGrid`, and the spec would depend on the file still being there mid-render — for a legend
+    # that is fixed for the whole movie by design.
     return MontageSpec(collect(panels), nframes,
                        Float64(panel_width), Float64(title_height), Float64(pad),
-                       legend_svg, legend_position, Float64(legend_font_size))
+                       legend_svg isa AbstractString ? _svgSource(legend_svg) : legend_svg,
+                       legend_position, Float64(legend_font_size))
 end
 
 """

@@ -122,11 +122,16 @@ Split the single user-facing `legend` keyword into the two things [`_svgGrid`](@
 | `:auto` | `(legend_file, :auto)` — whatever the caller resolved, or `nothing` |
 | `:bottom` / `:top` / `(row, col)` | `(legend_file, it)` — errors when there is no legend |
 """
+# An empty entry list is not a legend — it must collapse to `nothing`, or `_svgGrid` reserves a
+# band with nothing in it (a visible blank strip under a single-row storyboard).
+_legendOrNothing(x) = (x isa AbstractVector && isempty(x)) ? nothing : x
+
 function _normalizeLegend(legend, legend_file)
     (legend === nothing || legend === false) && return (nothing, :auto)
     legend isa AbstractString && return (String(legend), :auto)
-    legend isa AbstractVector && return (isempty(legend) ? nothing : legend, :auto)
-    legend === :auto && return (legend_file, :auto)
+    legend isa AbstractVector && return (_legendOrNothing(legend), :auto)
+    legend === :auto && return (_legendOrNothing(legend_file), :auto)
+    legend_file = _legendOrNothing(legend_file)
     if legend === :bottom || legend === :top || legend isa Tuple{Integer,Integer}
         legend_file === nothing && error(
             "legend=$(repr(legend)) says where to put the legend but there is no legend to put " *

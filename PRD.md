@@ -106,36 +106,6 @@ Row order follows the config's own cell-type order.
 
 ---
 
-## Feature: Cell-type legend for `montage` / `storyboard` — **implemented 2026-08-05**
-
-**One-line description:** Draw a cell-type legend alongside a stitched-SVG composition, built from the cell types the composition actually shows.
-
-**Priority:** Should-have (a montage of colored cells is unreadable without a key).
-
-**Where the entries come from:** the snapshot SVGs tag every cell — `<g id="cell442" type="tumor_epi" dead="false">` wrapping two `<circle>`s — so the label is the `type` attribute and the color is the outer circle's `fill`. Deriving the legend from the figure's own content means it lists exactly what is on screen, needs no side file, and stays correct automatically when panels are filtered. Dead cells are drawn black regardless of type, so they are skipped when sampling a type's color and contribute a single `dead` entry when present.
-
-*(PhysiCell also writes its own `output/legend.svg`. It is **not** used: it lists every configured cell type whether shown or not, its 1440×260 aspect wastes vertical space, and as a nested `<svg>` it is awkward to edit in Illustrator/PowerPoint. It remains available via `legend="…/legend.svg"`.)*
-
-**Behavioral specification (core):**
-- `_svgGrid` gains `legend_svg` / `legend_position` / `legend_font_size`; the verbs expose the single user-facing `legend` (plus `legend_file`, `legend_font_size`), normalized by `_normalizeLegend`.
-- `legend` accepts: `nothing`/`false` (none — the core default), **`(label, color)` entries**, an SVG **path or string**, `:auto`, `:bottom`, `:top`, or a `(row, col)` / `(row, col, span)` cell. Empty entries mean no legend.
-- **Drawn legends** (`_svgLegend`) emit **flat top-level `<circle>` and `<text>`** — deliberately not a nested `<svg>`, since nested SVGs are what PowerPoint and Illustrator handle worst and hand-editability is a main reason the output is SVG. They are authored at `legend_font_size` (the title size by default) and **wrap** to fit the space given, never scaling the text. So there is no scale factor and no minimum-legibility problem. The layout is run against the width the legend was *sized* against, never its own used width — re-wrapping at exactly that width lands the final entry on a float equality boundary and can push it onto a row the reserved band has no height for.
-- **External legend SVGs** are nested at natural size, shrunk only if they will not fit.
-- **`:auto` placement:** the free cells trailing the last row, spanning the whole run, costing *no* space; else a full-width band below. Always safe for a drawn legend (it wraps); an external SVG takes the run only if it is at least 0.7 of the run width, else bands.
-- Emitted legend geometry is rounded (`_px`); **with `legend_svg === nothing` output is byte-identical** to a grid built with no legend support.
-- **Movies:** `MontageSpec` carries the legend so every frame draws the same one. A five-argument constructor preserves the old arity (no legend).
-
-**PhysiCellOutput extension:** `legend=:auto` is the **default**. `_legendEntries` reads each folder's `legend.svg` (`_legendRows`) and unions across folders, so a sweep that mixed configs still explains every type any panel can contain — verified on the dev project, where 52 sims define 4 cell types and 12 define a 5th (`filler`). Folders with no `legend.svg` contribute nothing; if none has one, there is no legend. PCMM inherits this unchanged.
-
-**Acceptance criteria:**
-- `storyboard(seq)` puts a compact legend band below the filmstrip, text matching the titles. ✓ verified on the dev project (one 37.4 px row, i.e. 49.4 px total — a third of what nesting `legend.svg` cost) and rendered.
-- A montage with a free cell run places the legend there at **no size cost**, wrapping as needed. ✓ verified (3-sim montage, dimensions identical with and without).
-- Entries are the config's cell types, unioned across panels. ✓ verified: a 64-sim montage across mixed configs picks up `filler`, which only 12 sims define.
-- A movie's legend is complete and identical in every frame, built without reading a single snapshot. ✓ verified over 121 frames.
-- `legend=nothing` is byte-identical to the pre-feature output. ✓ core test.
-
----
-
 ## Feature: `tableau` — CairoMakie backend **(implemented incl. movies, 2026-07-23)**
 
 **One-line description:** Compose a single simulation state as a focal panel with satellite panels arranged around it.
