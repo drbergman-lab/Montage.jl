@@ -56,6 +56,44 @@ If a panel's content is a **vector of frame paths** (one per timepoint) instead 
 `montage` becomes a *montage of movies*: every panel animates through its frames in lockstep. This
 needs the movie extension — see [Movies](@ref).
 
+## Choosing which cells appear
+
+For the PhysiCell methods, `cell_types` and `include_dead` restrict which cells are drawn — with no
+re-rendering, because PhysiCell tags every cell in its snapshot SVGs with its type and dead flag,
+so the non-matching groups are simply dropped:
+
+```julia
+montage(Simulation, ids; cell_types = ["tumor_epi", "tumor_mes"])   # tumour only
+storyboard(Simulation, 1; include_dead = false)                     # live cells only
+```
+
+PhysiCell's own "N agents" caption is rewritten to the number actually shown, and the legend
+narrows to the kept types — a figure whose key advertises types you just filtered out would be
+misleading.
+
+## Editing panel contents: the `transform` seam
+
+Both of the above are built on a general hook. A [`Panel`](@ref) carries a `transform`, a function
+from SVG text to SVG text applied just before the panel is placed:
+
+```julia
+montage(["a/final.svg", "b/final.svg"];
+        legend = [("mine", "purple")],
+        legend_position = :bottom)
+
+# recolour just the first panel, without touching the file on disk
+montage([Panel("a/final.svg"; transform = svg -> replace(svg, "fill=\"red\"" => "fill=\"purple\"")),
+         Panel("b/final.svg")])
+```
+
+The transform runs when a panel is *placed*, so it takes effect only through a verb — constructing a
+`Panel` on its own does nothing.
+
+The default is `identity`, which is free — it returns the very same string object, so an
+untransformed composition is byte-identical to one built with no transform support at all. For a
+movie panel, `transform` may instead be a `Vector` parallel to the frames, when the edit differs
+per timepoint.
+
 ```@docs
 montage
 Panel

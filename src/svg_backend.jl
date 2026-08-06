@@ -191,7 +191,12 @@ function _svgGrid(panels::AbstractVector{Panel};
         p.content isa AbstractString ||
             error("the :svg backend needs an SVG file path per panel; got $(typeof(p.content))")
         isfile(p.content) || error("SVG file not found: $(p.content)")
-        text = read(p.content, String)
+        p.transform isa AbstractVector && error(
+            "this panel's transform is a Vector of $(length(p.transform)) functions, which is the " *
+            "per-frame form for a movie panel; a still panel takes a single function")
+        # `transform` edits the panel's contents before placement; `identity` is a no-op that
+        # returns the same object, so an untransformed grid is byte-identical.
+        text = p.transform(read(p.content, String))
         (; text, dims=_svgDimensions(text))
     end
 
@@ -287,7 +292,7 @@ function _svgGrid(panels::AbstractVector{Panel};
 
         if !isempty(panel.title)
             title_x = x0 + cell_w / 2
-            title_y = y0 + 24
+            title_y = y0 + _TITLE_FONT_SIZE + 2      # baseline sits just under the band top
             println(io, """<text x="$title_x" y="$title_y" text-anchor="middle" font-family="Arial" font-size="$(_TITLE_FONT_SIZE)" font-weight="bold" fill="black">$(_escapeXML(panel.title))</text>""")
         end
 
@@ -314,9 +319,10 @@ end
 """
     _px(x) -> Float64
 
-Round a coordinate for emission. Legend geometry comes from a scale *ratio*, so it picks up
-float noise (`400 * 22/40 == 220.00000000000003`) that would otherwise land verbatim in the
-SVG. Applied only where that noise arises, so the no-legend path stays byte-identical.
+Round a coordinate for emission. Legend geometry is built from fractions of the font size
+(`0.45 · font_size` for a marker radius, and so on), so it picks up float noise that would
+otherwise land verbatim in the SVG. Applied only where that noise arises, so the no-legend path
+stays byte-identical.
 """
 _px(x) = round(Float64(x); digits=4)
 

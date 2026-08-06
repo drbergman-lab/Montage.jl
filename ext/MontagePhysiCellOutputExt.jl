@@ -41,8 +41,10 @@ _folderLabel(folder) = basename(dirname(normpath(folder)))
 #   * Cost is one ~1.5 KB file **per simulation**, not per frame. It does not matter how many
 #     snapshots a movie has.
 #   * The legend describes what the *model can contain*, per the config — deliberately not
-#     narrowed to what happens to be visible in a particular snapshot. That is also what makes a
-#     movie legend correct for every frame without inspecting any of them.
+#     narrowed to what happens to be visible in a particular snapshot. That is what makes a movie
+#     legend correct for every frame without inspecting any of them. An explicit `cell_types`
+#     filter is different: those cells were removed on purpose, so `_keptLegend` narrows the key
+#     to match (a legend advertising types the user just filtered out would be wrong).
 #
 # Row order is the config's own cell-type order, which is more meaningful than sorting by name.
 
@@ -84,6 +86,69 @@ function Montage._cellTypeLegend(folders)
     return entries
 end
 
+# --- cell filtering in the stitched SVGs ----------------------------------------------------
+#
+# PhysiCell tags every cell in its snapshot SVGs:
+#
+#     <g id="cell442" type="tumor_epi" dead="true"> <circle …/> <circle …/> </g>
+#
+# so which cells to show can be decided without reading any data — just drop the groups that do
+# not match. The `id="cell…"` requirement scopes this to the cells layer on its own: the `tissue`
+# wrapper and `ECM` group have other ids, and the time/agent-count text is not a `<g>` at all.
+# Cell groups never nest, so a non-greedy match to the first `</g>` is exact.
+
+const _CELL_BLOCK_RE = r"[ \t]*<g\s+id=\"cell\d+\"\s+type=\"([^\"]*)\"\s+dead=\"([^\"]*)\"[^>]*>.*?</g>\n?"s
+const _AGENT_COUNT_RE = r"(>\s*)(\d+)(\s+agents\s*<)"
+
+_asNameVector(x::Union{AbstractString,Symbol}) = [String(x)]
+_asNameVector(x) = String.(collect(x))
+
+"""
+    _cellFilter(cell_types, include_dead) -> transform
+
+A `Panel` transform (see [`Panel`](@ref)) that keeps only the requested cells. Returns `identity`
+when nothing is being filtered, so an unfiltered panel is untouched.
+
+PhysiCell's own "N agents" label is rewritten to the number actually shown — a figure captioned
+`511 agents` while displaying 200 of them would be wrong.
+"""
+function _cellFilter(cell_types, include_dead::Bool)
+    cell_types === nothing && include_dead && return identity
+    keep = cell_types === nothing ? nothing : Set(_asNameVector(cell_types))
+    return function (svg::AbstractString)
+        seen = 0        # cell groups the pattern recognised at all
+        shown = 0       # of those, the ones kept
+        out = replace(svg, _CELL_BLOCK_RE => function (block)
+            seen += 1
+            m = match(_CELL_BLOCK_RE, block)
+            type, dead = m.captures[1], m.captures[2] == "true"
+            (keep !== nothing && !(type in keep)) && return ""
+            (!include_dead && dead) && return ""
+            shown += 1
+            return block
+        end)
+        # Only correct the caption if the cell layer was actually recognised. If the pattern
+        # matched nothing — a PhysiCell change to attribute order, say — then nothing was filtered
+        # either, and rewriting the count to 0 would mislabel a figure still showing every cell.
+        seen == 0 && return out
+        return replace(out, _AGENT_COUNT_RE => s -> begin
+            m = match(_AGENT_COUNT_RE, s)
+            m.captures[1] * string(shown) * m.captures[3]
+        end)
+    end
+end
+
+"""
+    _keptLegend(entries, cell_types) -> entries
+
+Narrow the legend to the cell types actually kept, so a filtered figure's key matches what is on
+screen instead of advertising types that were removed. Applies only to a discovered (`:auto`)
+legend — an explicit one is the caller's own and is left alone.
+"""
+_keptLegend(entries, cell_types) =
+    cell_types === nothing ? entries :
+        filter(e -> e[1] in Set(_asNameVector(cell_types)), entries)
+
 """
     _resolveAuto(legend, folders) -> legend
 
@@ -91,8 +156,8 @@ Turn `legend=:auto` into real `(label, colour)` entries from the runs' `legend.s
 — explicit entries, a path, or `nothing` — passes straight through, so a caller can override the
 content while still using `legend_position` to place it.
 """
-_resolveAuto(legend, folders) =
-    legend === :auto ? Montage._cellTypeLegend(folders) : legend
+_resolveAuto(legend, folders, cell_types = nothing) =
+    legend === :auto ? _keptLegend(Montage._cellTypeLegend(folders), cell_types) : legend
 
 # --- montage -----------------------------------------------------------------------------
 
@@ -115,22 +180,29 @@ when the grid has some (costing no space), else in a band below. Pass `legend=no
 file — and `legend_position` (`:auto`, `:bottom`, `:top`, `(row, col)`) to place whichever of those
 you chose. In a movie the legend is drawn into every frame.
 
+`cell_types` (a name or vector of names) and `include_dead=false` restrict which cells are drawn,
+by dropping the non-matching cell groups from each snapshot SVG — no re-rendering, and PhysiCell's
+"N agents" label is corrected to the number actually shown. A `legend=:auto` legend narrows to the
+kept types; an explicit `legend` — your own entries, or a file — is used exactly as given.
+
 All other keywords pass through to the core verb (`output`, `overwrite`, `panel_width`,
 `framerate`, …).
 """
 function Montage.montage(seqs::AbstractVector{<:PhysiCellSequence};
                          index = :final, title = seq -> _folderLabel(seq.folder),
-                         legend = :auto, kwargs...)
-    legend = _resolveAuto(legend, (s.folder for s in seqs))
+                         legend = :auto, cell_types = nothing, include_dead::Bool = true,
+                         kwargs...)
+    legend = _resolveAuto(legend, (s.folder for s in seqs), cell_types)
+    tf = _cellFilter(cell_types, include_dead)
     if _isMovieIndex(index)
-        panels = [Panel(_frameSVGs(seq, index); title = title(seq)) for seq in seqs]
+        panels = [Panel(_frameSVGs(seq, index); title = title(seq), transform = tf) for seq in seqs]
         return montage(panels; legend, kwargs...)
     end
     fname = _stateFile(index)
     panels = Panel[]
     for seq in seqs
         svg = joinpath(seq.folder, fname)
-        isfile(svg) ? push!(panels, Panel(svg; title = title(seq))) :
+        isfile(svg) ? push!(panels, Panel(svg; title = title(seq), transform = tf)) :
             @warn "no $fname in $(seq.folder); skipping"
     end
     isempty(panels) && error("no $fname found in the given folders")
@@ -142,9 +214,11 @@ Montage.montage(seq::PhysiCellSequence; kwargs...) = montage([seq]; kwargs...)
 # A vector of already-selected states → a still grid (one panel per snapshot).
 function Montage.montage(snaps::AbstractVector{<:PhysiCellSnapshot};
                          title = snap -> _folderLabel(snap.folder),
-                         legend = :auto, kwargs...)
-    legend = _resolveAuto(legend, (s.folder for s in snaps))
-    panels = [Panel(_stateSVG(s.folder, s.index); title = title(s)) for s in snaps]
+                         legend = :auto, cell_types = nothing, include_dead::Bool = true,
+                         kwargs...)
+    legend = _resolveAuto(legend, (s.folder for s in snaps), cell_types)
+    tf = _cellFilter(cell_types, include_dead)
+    panels = [Panel(_stateSVG(s.folder, s.index); title = title(s), transform = tf) for s in snaps]
     return montage(panels; legend, kwargs...)
 end
 Montage.montage(snap::PhysiCellSnapshot; kwargs...) = montage([snap]; kwargs...)
@@ -184,22 +258,27 @@ Timepoints via `index` (a vector of snapshot indices and/or `:initial`/`:final`)
 `n_snapshots` (default 4, evenly spaced incl. endpoints). Frame titles are the snapshot
 times through `title`.
 
-A **cell-type legend is included by default** (`legend=:auto`), from the run's `output/legend.svg`.
-Since a filmstrip is a single row with no spare cell, it lands in a band below; pass
+`cell_types` and `include_dead` restrict which cells are drawn, as in `montage`.
+
+A **cell-type legend is included by default** (`legend=:auto`), from the run's `output/legend.svg`,
+narrowed to the kept cell types (an explicit `legend` is used as given). Since a filmstrip is a
+single row with no spare cell, it lands in a band below; pass
 `legend=nothing` to suppress it. See `montage` for the other `legend` forms.
 """
 function Montage.storyboard(seq::PhysiCellSequence;
                             index = nothing,
                             n_snapshots::Integer = isnothing(index) ? 4 : length(index),
                             title = t -> "t = $t",
-                            legend = :auto,
+                            legend = :auto, cell_types = nothing, include_dead::Bool = true,
                             ncols::Union{Nothing,Integer} = nothing, kwargs...)
     isnothing(index) || n_snapshots == length(index) ||
         error("pass either `index` or `n_snapshots`, not both with different lengths (got n_snapshots=$n_snapshots, length(index)=$(length(index)))")
     snaps = isnothing(index) ? _evenSnapshots(seq, n_snapshots) : [_snapshotFor(seq, sel) for sel in index]
-    panels = [Panel(_stateSVG(s.folder, s.index); title = string(title(s.time))) for s in snaps]
+    tf = _cellFilter(cell_types, include_dead)
+    panels = [Panel(_stateSVG(s.folder, s.index); title = string(title(s.time)), transform = tf)
+              for s in snaps]
     return storyboard(panels; ncols = something(ncols, length(panels)),
-                      legend = _resolveAuto(legend, (seq.folder,)), kwargs...)
+                      legend = _resolveAuto(legend, (seq.folder,), cell_types), kwargs...)
 end
 
 end # module

@@ -114,6 +114,28 @@ Row order follows the config's own cell-type order.
 
 ---
 
+## Feature: Cell filtering for `montage` / `storyboard` — **implemented 2026-08-05**
+
+**One-line description:** Restrict which cells a stitched-SVG composition shows, without re-rendering anything.
+
+**Priority:** Should-have (the common request alongside colouring).
+
+**Why it works without data:** PhysiCell tags every cell in its snapshot SVGs — `<g id="cell442" type="tumor_epi" dead="true">` wrapping two `<circle>`s — so type and dead status are readable from the figure itself. Filtering is dropping the non-matching groups. Cell groups never nest, so a non-greedy match to the first `</g>` is exact, and requiring `id="cell…"` scopes the edit to the cells layer (the `tissue` wrapper and `ECM` group have other ids).
+
+**Behavioral specification:**
+- **Core gains one generic seam and no PhysiCell knowledge:** `Panel(content; title, transform=identity)`, a function `SVG text -> SVG text` applied in `_svgGrid` before placement. There is no `colorby`/`cell_types`/colormap in core. `identity` is verifiably free — it returns the same object (`identity(s) === s`, 0 bytes allocated), so an untransformed grid is byte-identical.
+- **Per-`Panel`, not a verb kwarg,** because a montage across simulations needs a *different* closure per panel (each bound to that run's data) — filtering happens to be uniform, recolouring is not.
+- For movies, `transform` may be a **`Vector` parallel to the frames**; `_svgFrame` selects `transform[t]` via `_frameTransform`. A single function applies to every frame.
+- **PhysiCellOutput extension:** `cell_types` (a name or vector) and `include_dead=true` build the transform (`_cellFilter`), which returns `identity` when nothing is filtered. PhysiCell's "N agents" caption is **rewritten to the number actually drawn** — a figure captioned `511 agents` while showing 200 would be wrong.
+- **The legend narrows to the kept types** (`_keptLegend`). Config-derived entries are deliberately *not* narrowed to what is visible in a snapshot (that is what keeps one legend correct for a whole movie), but an explicit `cell_types` filter is different: those cells were removed on purpose.
+
+**Acceptance criteria:**
+- `cell_types`/`include_dead` drop exactly the right cells and nothing else. ✓ verified on the dev project: 511 cells → 200 for `["nk","caf"]`, 100 for scalar `"nk"`, 482 for `include_dead=false`, 234 for both; captions track (511/200/482/234); scale bar, time text and `tissue` group all preserved; `_cellFilter(nothing, true) === identity`.
+- The legend lists only kept types. ✓ verified and rendered.
+- An untransformed composition is unchanged. ✓ core test.
+
+---
+
 ## Feature: `tableau` — CairoMakie backend **(implemented incl. movies, 2026-07-23)**
 
 **One-line description:** Compose a single simulation state as a focal panel with satellite panels arranged around it.

@@ -191,6 +191,68 @@ end
         end
     end
 
+    @testset "Panel transform — the content-editing seam" begin
+        @test Panel("a.svg").transform === identity
+        @test Panel("a.svg", "A").transform === identity
+        f = s -> s
+        @test Panel("a.svg"; transform=f).transform === f
+        # identity really is free: same object back, no copy (so output stays byte-identical)
+        big = SVG_SQUARE^50
+        @test identity(big) === big
+        # a Vector of transforms is indexed per frame; anything else applies to every frame
+        g = s -> s * "!"
+        @test Montage._frameTransform([f, g], 2) === g
+        @test Montage._frameTransform(f, 7) === f
+    end
+
+    @testset "Panel transform — per-frame form rejected on a still panel" begin
+        withtmpsvgs(SVG_SQUARE) do paths
+            # a Vector is the movie form; on a still panel it used to surface as a bare
+            # "Vector is not callable" MethodError
+            err = try
+                montage([Panel(paths[1]; transform = [identity, identity])]; output=nothing)
+            catch e
+                sprint(showerror, e)
+            end
+            @test occursin("Vector of 2 functions", err)
+            @test occursin("movie panel", err)
+            @test occursin("single function", err)
+        end
+    end
+
+    @testset "Panel transform — applied when stitching" begin
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE) do paths
+            plain = montage(paths; output=nothing)
+            # recolour one panel's contents without touching the file on disk
+            tinted = montage([Panel(paths[1]; transform = s -> replace(s, "red" => "lime")),
+                              Panel(paths[2])]; output=nothing)
+            @test occursin("fill=\"lime\"", tinted)
+            @test occursin("fill=\"red\"", tinted)              # the untransformed panel is intact
+            @test count("fill=\"lime\"", tinted) == 1
+            # explicit identity is byte-identical to no transform at all
+            @test montage([Panel(paths[1]; transform=identity), Panel(paths[2])]; output=nothing) == plain
+            # a transform that changes the intrinsic size changes the layout, as it must
+            grown = montage([Panel(paths[1]; transform = s -> replace(s, "height=\"100\"" => "height=\"200\"")),
+                             Panel(paths[2])]; output=nothing)
+            @test occursin("height=\"624.0\"", grown)           # aspect now 2 -> 600 + 2*12
+        end
+    end
+
+    @testset "Panel transform — per-frame in a movie" begin
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE) do paths
+            # one transform per frame: frame 1 tinted lime, frame 2 tinted blue
+            spec = montage([Panel([paths[1], paths[2]];
+                                  transform = [s -> replace(s, "red" => "lime"),
+                                               s -> replace(s, "red" => "blue")])]; output=nothing)
+            @test occursin("fill=\"lime\"", Montage._svgFrame(spec, 1))
+            @test occursin("fill=\"blue\"", Montage._svgFrame(spec, 2))
+            # a single function applies to every frame
+            spec2 = montage([Panel([paths[1], paths[2]];
+                                   transform = s -> replace(s, "red" => "teal"))]; output=nothing)
+            @test all(occursin("fill=\"teal\"", Montage._svgFrame(spec2, t)) for t in 1:spec2.nframes)
+        end
+    end
+
     @testset "legend — helpers" begin
         # SVG text passes through; a path is read
         @test Montage._svgSource(SVG_LEGEND) == SVG_LEGEND
