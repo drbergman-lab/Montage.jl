@@ -172,6 +172,23 @@ end
         end
     end
 
+    @testset "montage — ncols shapes the grid (still and movie spec)" begin
+        withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
+            # still: 4 untitled squares, ncols=4 -> one 4-wide row, no title band:
+            # total_w = 4*(300+12) + 12 = 1260, total_h = 300 + 2*12 = 324
+            svg = montage(paths; ncols=4, output=nothing)
+            @test occursin("width=\"1260.0\"", svg) && occursin("height=\"324.0\"", svg)
+            # movie: the spec carries ncols and every frame is stitched with it
+            spec = montage([Panel([p, p]) for p in paths]; ncols=4, output=nothing)
+            @test spec.ncols == 4
+            f1 = Montage._svgFrame(spec, 1)
+            @test occursin("width=\"1260.0\"", f1) && occursin("height=\"324.0\"", f1)
+            # default is unchanged: near-square ceil(sqrt(4)) = 2 -> 2x2
+            svg = montage(paths; output=nothing)
+            @test occursin("width=\"636.0\"", svg) && occursin("height=\"636.0\"", svg)
+        end
+    end
+
     @testset "storyboard — ncols wraps; animated rejected" begin
         withtmpsvgs(SVG_SQUARE, SVG_SQUARE, SVG_SQUARE, SVG_SQUARE) do paths
             svg = storyboard(paths; ncols=2, output=nothing)    # 4 untitled -> 2×2, no band

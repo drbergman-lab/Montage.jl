@@ -133,11 +133,18 @@ struct MontageSpec
     legend_svg::Any                     # nothing | (label, color) entries | an SVG path/string
     legend_position::Any
     legend_font_size::Float64
+    ncols::Any                          # nothing (near-square default) | Integer column count
 end
+
+# Legend-era constructor — keeps callers predating the `ncols` field working.
+MontageSpec(panels, nframes, panel_width, title_height, pad,
+            legend_svg, legend_position, legend_font_size) =
+    MontageSpec(panels, nframes, panel_width, title_height, pad,
+                legend_svg, legend_position, legend_font_size, nothing)
 
 # Old-arity constructor — keeps hand-built specs (and any caller predating legends) working.
 MontageSpec(panels, nframes, panel_width, title_height, pad) =
-    MontageSpec(panels, nframes, panel_width, title_height, pad, nothing, :auto, _TITLE_FONT_SIZE)
+    MontageSpec(panels, nframes, panel_width, title_height, pad, nothing, :auto, _TITLE_FONT_SIZE, nothing)
 
 Base.show(io::IO, spec::MontageSpec) =
     print(io, "MontageSpec($(length(spec.panels)) panels × $(spec.nframes) frames)")

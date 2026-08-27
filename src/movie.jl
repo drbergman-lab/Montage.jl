@@ -13,6 +13,7 @@ paths). Frames are aligned by index and truncated to the shortest sequence; a wa
 is emitted if the panels have differing frame counts.
 """
 function _montageSpec(panels::AbstractVector{Panel}; panel_width, title_height, pad,
+                      ncols=nothing,
                       legend_svg=nothing, legend_position=:auto,
                       legend_font_size=_TITLE_FONT_SIZE)
     all(_isAnimated, panels) ||
@@ -29,7 +30,7 @@ function _montageSpec(panels::AbstractVector{Panel}; panel_width, title_height, 
     return MontageSpec(collect(panels), nframes,
                        Float64(panel_width), Float64(title_height), Float64(pad),
                        legend_svg isa AbstractString ? _svgSource(legend_svg) : legend_svg,
-                       legend_position, Float64(legend_font_size))
+                       legend_position, Float64(legend_font_size), ncols)
 end
 
 """
@@ -43,7 +44,8 @@ comes along too — indexed by frame when it is a `Vector` (see [`Panel`](@ref))
 function _svgFrame(spec::MontageSpec, t::Integer)
     1 <= t <= spec.nframes || throw(BoundsError(spec, t))
     frame = [Panel(p.content[t], p.title, _frameTransform(p.transform, t)) for p in spec.panels]
-    return _svgGrid(frame; panel_width=spec.panel_width,
+    return _svgGrid(frame; ncols=_resolvedNcols(spec.ncols, length(frame)),
+                    panel_width=spec.panel_width,
                     title_height=spec.title_height, pad=spec.pad,
                     legend_svg=spec.legend_svg, legend_position=spec.legend_position,
                     legend_font_size=spec.legend_font_size)

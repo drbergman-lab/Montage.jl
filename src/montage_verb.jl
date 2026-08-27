@@ -11,7 +11,8 @@ _looksAnimated(x) = x isa AbstractVector
 _defaultOutput(panels) = any(_looksAnimated, panels) ? "montage.mp4" : "montage.svg"
 
 """
-    montage(panels; backend=:svg, panel_width=300, title_height=34, pad=12,
+    montage(panels; backend=:svg, ncols=<auto: ceil(sqrt(n))>, panel_width=300,
+            title_height=34, pad=12,
             legend=nothing, legend_position=:auto, legend_font_size=<title size>,
             output=<auto: montage.svg | montage.mp4>, overwrite=false, framerate=15)
 
@@ -36,6 +37,10 @@ FFMPEG`).
 - `title_height::Real=34`: px reserved above each panel for its title. The band is
   reserved for the whole grid only if at least one panel is titled.
 - `pad::Real=12`: px of padding between and around panels.
+- `ncols::Union{Nothing,Integer}=nothing`: columns in the grid; `nothing` (the default)
+  keeps the near-square `ceil(sqrt(n))` layout. Set it to shape the comparison — e.g. a
+  conditions-by-replicates grid via `ncols=<number of conditions>` with panels listed
+  row-major. Applies to stills and movies alike.
 - `legend`: **what** legend to draw — `[("label", "color"), …]` entries (drawn as flat circles and
   labels, so they stay editable in Illustrator/PowerPoint), or a path/SVG string to nest as-is.
   `nothing` (the core default) draws none. With PhysiCellOutput or PCMM loaded the default becomes
@@ -78,7 +83,8 @@ montage([Panel(["a/f1.svg", "a/f2.svg"]; title="A"),
          Panel(["b/f1.svg", "b/f2.svg"]; title="B")]; output="compare.mp4", framerate=15)
 ```
 """
-function montage(panels; backend::Symbol=:svg, panel_width::Real=300,
+function montage(panels; backend::Symbol=:svg, ncols::Union{Nothing,Integer}=nothing,
+                 panel_width::Real=300,
                  title_height::Real=34, pad::Real=12,
                  legend=nothing, legend_position=:auto, legend_font_size::Real=_TITLE_FONT_SIZE,
                  output::Union{Nothing,AbstractString}=_defaultOutput(panels),
@@ -87,20 +93,25 @@ function montage(panels; backend::Symbol=:svg, panel_width::Real=300,
     legend_svg = _normalizeLegend(legend)
     if any(_isAnimated, ps)
         # movie: build the spec, then render it (unless output=nothing → return the spec)
-        spec = _montageSpec(ps; panel_width, title_height, pad,
+        spec = _montageSpec(ps; panel_width, title_height, pad, ncols,
                             legend_svg, legend_position, legend_font_size)
         output === nothing && return spec
         return record(spec, output; framerate, overwrite)
     end
-    return _montage(montageBackend(backend), ps; panel_width, title_height, pad,
+    return _montage(montageBackend(backend), ps; panel_width, title_height, pad, ncols,
                     legend_svg, legend_position, legend_font_size, output, overwrite)
 end
 
+# The grid width `montage` uses: caller's `ncols`, or the near-square default.
+_resolvedNcols(ncols::Nothing, n::Integer) = ceil(Int, sqrt(n))
+_resolvedNcols(ncols::Integer, n::Integer) = Int(ncols)
+
 # --- :svg backend (core) ---
 function _montage(::SVGBackend, panels::AbstractVector{Panel};
-                  panel_width, title_height, pad,
+                  panel_width, title_height, pad, ncols,
                   legend_svg, legend_position, legend_font_size, output, overwrite)
-    svg = _svgGrid(panels; panel_width, title_height, pad,
+    svg = _svgGrid(panels; ncols=_resolvedNcols(ncols, length(panels)),
+                   panel_width, title_height, pad,
                    legend_svg, legend_position, legend_font_size)
     return _writeSVG(svg, output, overwrite)
 end
