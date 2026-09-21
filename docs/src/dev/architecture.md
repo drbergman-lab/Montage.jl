@@ -52,16 +52,19 @@ Where to make a change: what lives in which file, how one call travels through t
 ## The data flow of one call
 
 !!! tierbrief
-    Follow one movie call from a simulation id to an encoded file. Every hop below is a method
-    on a name the core owns.
+    Follow one movie call from a simulation id — or from the trial object that resolves to one —
+    to an encoded file. Every hop below is a method on a name the core owns.
 
 ```julia
 using Montage, PhysiCellModelManager, Rsvg, Cairo, FFMPEG
-montage(Simulation, ids; index=:all, output="compare.mp4")
+
+montage(Simulation, ids; index=:all, output="compare.mp4")   # from ids
+montage(sampling; index=:all, output="compare.mp4")          # or from the trial itself
 ```
 
 | # | Function | File |
 |---|---|---|
+| 0 | `montage(::AbstractTrial)` / `montage(::PCMMOutput)`, and vectors of either, through `simulationIDs` — the hop you skip by passing ids | `ext/MontagePhysiCellModelManagerExt.jl` |
 | 1 | `montage(::Type{Simulation}, sim_ids; …)`, through `_outputFolder` and `_sequence` | `ext/MontagePhysiCellModelManagerExt.jl` |
 | 2 | `montage(::AbstractVector{<:PhysiCellSequence}; …)`, through `_frameIndices`, `_frameSVGs`, `_colorPlan`, `_legendFor` | `ext/MontagePhysiCellOutputExt.jl` |
 | 3 | `montage(panels; …)`, through `_asPanels` and `_normalizeLegend` | `src/montage_verb.jl` |
@@ -71,6 +74,11 @@ montage(Simulation, ids; index=:all, output="compare.mp4")
 | 7 | `_svgFrame(spec, t)` per frame, which calls `_svgGrid` | `src/movie.jl`, `src/svg_backend.jl` |
 
 !!! tierdev
+    Hop 0 is one line per method: it resolves whatever PCMM handed you — a `Simulation`, `Monad`,
+    `Sampling` or `Trial`, a `PCMMOutput`, or a vector of either — into simulation ids with
+    `simulationIDs`, then calls hop 1. Everything downstream is identical, which is the point: the
+    object forms are a convenience over the id form, not a second path.
+
     Hop 1 turns each id into `trialFolder(Simulation, id)/output` and wraps it in a
     `PhysiCellOutput.PhysiCellSequence`, keeping a folder-to-id map so the caller's `title`
     function still sees ids. Hop 2 is where PhysiCell knowledge lives: it globs the snapshot SVG

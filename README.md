@@ -51,6 +51,7 @@ using PhysiCellModelManager, Montage
 # montage: compare across sims. `index` decides still image vs. movie
 montage(Simulation, simulationIDs())                             # final state of every sim, gridded + written
 montage(Simulation, [1, 2, 3]; index=:initial, output=nothing)   # initial states, returned as a string
+montage(sampling)                                                # or hand it a trial, and its sims are used
 
 # storyboard: one sim's time evolution as a static filmstrip with timestamp titles
 storyboard(Simulation, 32)                                       # 4 evenly-spaced frames
