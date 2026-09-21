@@ -10,6 +10,8 @@ Assistant professor working on computational modeling of cancer-immune interacti
 | [README.md](README.md) | Project overview + **Implementation Status** (what is built, what remains) |
 | [PRD.md](PRD.md) | Behavioral specification for every feature — acceptance criteria and edge cases |
 | [progress.md](progress.md) | Session journal: decisions made, approaches rejected, open questions |
+| [AGENTS.md](AGENTS.md) | Exact commands, invariants and sharp edges — the operational half of this file |
+| [docs/src/dev/architecture.md](docs/src/dev/architecture.md) | Module map, the data flow through one call, and where to make a change |
 
 Start any feature session by reading the relevant PRD entry and the Implementation Status section of `README.md`. (The package was seeded from an original design brief, `HANDOFF.md`, now removed — PRD.md/progress.md are the living record.)
 
@@ -93,7 +95,8 @@ A feature is complete when **all** are true:
 2. **Docstrings written:** every exported function has a docstring with description, arguments, return value, and a usage example.
 3. **README updated:** Implementation Status marks the feature complete.
 4. **PRD reflects reality:** if implementation deviated from the PRD, update the PRD entry.
-5. **No regressions.**
+5. **Docs build clean:** `julia --project=docs docs/make.jl` succeeds, and any new user-facing behavior has a manual page in the tiered house style (see below).
+6. **No regressions.**
 
 ## Montage-Specific Guidance
 - **Two backends, SVG is the default and lives in core.** (A) SVG string-stitching (the prototype — lossless vector, static only, no real heatmaps/colorbars) is the core default, no heavy deps. (B) CairoMakie (`Figure` + `GridLayout`, real colorbars, shared axes, the only path to movies and `tableau`) lives in the CairoMakie extension. Selected via the `backend` kwarg (default `:svg`).
@@ -101,6 +104,7 @@ A feature is complete when **all** are true:
 - **Movies use a separate `record(spec, path)` entry point**, not per-verb `movie=` kwargs and never per-verb `_movie`/`_gif` variants: a verb builds a composition spec; `record` animates it (in the CairoMakie extension).
 - **Getting PhysiCell visuals into Makie:** rasterize an existing snapshot SVG (`Rsvg`+`Cairo` → matrix → `image!`) when you want PhysiCell's own styling; **re-plot from data** (`heatmap!` substrate voxel grid, `scatter!` cells) for `tableau` and any movie needing real heatmaps. Re-plotting requires the PCMM data layer (extension only).
 - **Keep PCMM and CairoMakie out of core test deps.** Core tests exercise the SVG-backend verbs on tiny hand-written SVGs / dummy data.
+- **Docs follow the tiered house style** (the `julia-tiered-docs` skill): the page spine is always visible, and depth lives in `!!! tierbrief` / `tierfull` / `tierdev` / `tierjournal` blocks, shallowest first, never wrapping a code block. Write in the present tense of the code — no "planned", no "used to"; a rename belongs in a changelog, not a page. `docs/src/dev/journal.md` is **generated** by `docs/journal.jl` from the dated `tierjournal` blocks; edit the blocks, not the file. `docs/make.jl` loads every weak dependency and errors if an extension is missing, so the API reference cannot go quietly half-empty.
 
 ## Julia Environment Rules
 - Always run Julia with `--project=.`
@@ -108,8 +112,8 @@ A feature is complete when **all** are true:
 - Do not edit `Manifest.toml` or add dependencies without explicit approval. CairoMakie (+ `Rsvg`/`Cairo` for SVG rasterization) and PCMM go in `[weakdeps]` with matching `[extensions]` entries — **not** `[deps]`; the core stays light. Confirm the dep list with the user first.
 
 ## Environment Facts
-- Julia 1.12.6 in the dev env (extensions need ≥1.9). Template `[compat] julia = "1.10.10"`.
-- PCMM v0.3.3, UUID `7582d1aa-5e58-4d65-a123-4418a61a2644`, at `~/.julia/packages/PhysiCellModelManager/pLFnT`.
+- Julia 1.13.0 in the dev env (extensions need ≥1.9). Template `[compat] julia = "1.10.10"`.
+- PCMM UUID `7582d1aa-5e58-4d65-a123-4418a61a2644`; `[compat] PhysiCellModelManager = "0.4, 0.5"` (0.5.1 is current). PCMM ≥ 0.4 depends on PhysiCellOutput, so `using PhysiCellModelManager, Montage` activates both PhysiCell extensions on its own — do not tell users to load PhysiCellOutput as well.
 - Dev project with real data: `/Users/dbergman1/Research/GeorgetownR01` (a Julia project, **not** git) — 34+ sims, each with `final.svg` and 124 snapshots. Real data for every mode.
 - PhysiCell `final.svg` intrinsic size is 1000×1070 — **parse it, do not hardcode**.
 - Renderers available on the machine: `rsvg-convert`, `qlmanage`, `sips`.
@@ -121,7 +125,7 @@ six extensions exist: `MontageMovieExt`, `MontagePhysiCellOutputExt`,
 `MontageCairoMakiePCMMExt`. See [README.md](README.md) Implementation Status for the
 feature-by-feature record. Remaining:
 
-- **Handoff doc → PCMM session** ([PCMM_DOCS_HANDOFF.md](PCMM_DOCS_HANDOFF.md), untracked/excluded): all three verb sections ready. The maintainer carries it to a PCMM-repo session to add the "Visualizing simulations with Montage" page (PCMM is a read-only boundary here). See [progress.md](progress.md) "Docs locality".
+- **Handoff doc → PCMM session** ([PCMM_DOCS_HANDOFF.md](PCMM_DOCS_HANDOFF.md), untracked/excluded): all three verb sections ready. The maintainer carries it to a PCMM-repo session to add the "Visualizing simulations with Montage" page (PCMM is a read-only boundary here). It can be much shorter than drafted now that Montage's own `docs/src/man/physicell.md` documents these methods — the PCMM page is orientation plus links, not a restatement.
 - **Time-based frame alignment** — movie follow-up: align by simulation time (nearest snapshot on a common grid), not just index.
 - **Release** — bump `version` in `Project.toml` and `using LocalRegistry; register()`. Montage v0.1.0 is already in BergmanLabRegistry and CI/TagBot are wired to it, so a new version is just a tag away. Maintainer's call, not a Claude action (publishing is outward-facing).
 - **`dashboard` (name reserved — future verb).** A live-updating counterpart to `tableau`. **Revisit the premise first:** this to-do describes an Observable-driven GLMakie/WGLMakie view, but the dashboard that actually shipped (PhysiCellDashboard.jl) is HTTP + browser serving static PNGs from `Montage.tableau`, with interactivity client-side. CairoMakie provides no interactivity either way, so the two are not in tension — but the verb should be designed around what the dashboard really does. See the 2026-08-05 progress entry.

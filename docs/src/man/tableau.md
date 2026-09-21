@@ -2,138 +2,182 @@
 CurrentModule = Montage
 ```
 
-# Tableau
+# [Tableau](@id tableau-page)
 
-[`tableau`](@ref) composes a single state as a **focal panel surrounded by satellite panels** —
-the verb for showing how the heterogeneous parts of one state relate spatially (e.g. a focal
-scatter centered, with heatmaps of related fields arranged around it, all on a shared extent).
+[`tableau`](@ref) composes one state as a focal panel surrounded by satellite panels — the verb for showing how the heterogeneous parts of a single state relate spatially.
 
-Unlike [`montage`](@ref) and [`storyboard`](@ref), `tableau` is **data-driven** — it re-plots from
-data rather than stitching existing SVGs, so it can produce real heatmaps, colorbars, and shared
-axes. That requires **CairoMakie**:
+!!! tierbrief
+    Where [`montage`](@ref) and [`storyboard`](@ref) stitch pictures that already exist,
+    `tableau` re-plots from data. That is what buys real heatmaps, real colorbars and one
+    spatial extent shared by every panel, and it is why the verb needs CairoMakie.
+
+!!! tierfull
+    The methods appear as soon as CairoMakie is loaded alongside Montage; until then, calling
+    `tableau` errors with exactly that hint. CairoMakie is a weak dependency, so its load time
+    falls only on the people who ask for this verb — see [Extensions](@ref extensions-page).
 
 ```julia
 using CairoMakie, Montage
 ```
 
-Without it loaded, calling `tableau` errors with that hint.
+!!! tierjournal "2026-07-22 — tableau is CairoMakie-only"
+    The other two verbs stitch existing SVGs, which cannot give real heatmaps, real colorbars
+    or a shared spatial extent. Rejected forcing tableau into the SVG backend to keep it in the
+    core; it would have produced a picture that looked like a tableau without the axes actually
+    agreeing. CairoMakie stays a weak dependency, so the cost lands only on people who ask for
+    this verb.
 
 ## The generic form
 
-The data-agnostic method takes an axis **callback** for the focal panel and a vector of callbacks
-for the satellites (each returns the plot its colorbar reads):
+!!! tierbrief
+    `tableau(focal, satellites)` takes axis callbacks, not data: `focal` is `ax -> …`, and each
+    satellite is `ax -> plot`. Every satellite callback must **return** the plot it drew — that
+    returned object is what its colorbar reads.
 
-```julia
+!!! tierfull
+    Callbacks rather than arrays, because the verb owns the layout and nothing else. A focal
+    panel is whatever you can draw into a Makie `Axis` — a scatter, a contour, a rasterized
+    image — and a satellite is any plot a `Colorbar` accepts, so there is no data shape for the
+    generic method to know about. The methods that do take data, for PhysiCell output, are
+    built on top of this one by writing the callbacks for you.
+
+    `satellite_titles` and `colorbar_labels` run parallel to `satellites`: entry `i` labels
+    panel `i`, and a short vector simply leaves the later panels unlabelled. `xlims` and
+    `ylims` are given once and applied to every axis, focal and satellite alike, so a feature
+    at a given coordinate sits at the same place in all of them — the whole point of the
+    arrangement. Both must be given for either to take effect. `size` is the figure size in
+    Makie's device-independent pixels, `(1000, 1000)` by default.
+
+```@setup tab
 using CairoMakie, Montage
-
-xs = range(-1, 1; length=40)
-Z  = [exp(-(x^2 + y^2)) for x in xs, y in xs]
-
-tableau(ax -> scatter!(ax, randn(50), randn(50); label="points"),
-        [ax -> heatmap!(ax, xs, xs, Z)];
-        satellite_titles = ["field"], colorbar_labels = ["field"],
-        output = "scene.png")
+xs = range(-100, 100; length = 41)
+ys = range(-100, 100; length = 41)
+oxygen = [38 - 30exp(-(hypot(x, y) / 50)^2) for x in xs, y in ys]
+drug   = [5 + 4sin(x / 40) * cos(y / 40) for x in xs, y in ys]
+ecm    = [0.5 + 0.4tanh(hypot(x, y) / 60 - 1) for x in xs, y in ys]
+tumor  = [Point2f(x, y) for x in -45:9:45, y in -45:9:45 if hypot(x, y) <= 45]
+immune = [Point2f(75cos(t), 75sin(t)) for t in range(0, 2pi; length = 41)[1:40]]
 ```
 
-Satellites are auto-ringed around the focal panel; each is paired with a colorbar. The cell-type
-**legend** is placed by the `legend` keyword: `:auto` (default) drops it in an empty grid cell —
-off the focal plot entirely — falling back to an in-axis corner when the grid is full; you can also
-pass a position `Symbol` (`:rt`, `:lt`, …), an explicit grid cell `(row, col)`, or `nothing`.
+```@example tab
+function cells(ax)
+    scatter!(ax, tumor; label = "tumor", markersize = 7)
+    scatter!(ax, immune; label = "immune", markersize = 7)
+end
 
-Set `focal_colorbar_label` to give the **focal** panel a colorbar of its own — for a focal plot
-encoding a continuous value rather than discrete categories. The focal callback must then return
-its plot, the same convention the satellites follow, and there are no labelled series for a legend
-to read, so pass `legend=nothing` with it.
+tableau(cells,
+        [ax -> heatmap!(ax, xs, ys, oxygen),
+         ax -> heatmap!(ax, xs, ys, drug),
+         ax -> heatmap!(ax, xs, ys, ecm)];
+        focal_title = "cells",
+        satellite_titles = ["oxygen", "drug", "ECM"],
+        colorbar_labels = ["mmHg", "μM", "density"],
+        xlims = (-100, 100), ylims = (-100, 100),
+        size = (800, 800),
+        output = nothing)
+```
 
-Output follows the same rules as the other verbs (writes `tableau.png` by default;
-`output=nothing` returns the Makie `Figure`; `overwrite` guards existing files).
+## Where things land
 
-## Vector output
+!!! tierbrief
+    Satellites ring the centred focal panel in a fixed order: north, south, west, east, then
+    the four corners. Past eight satellites the ring gives way to a square grid with the focal
+    panel in the middle of it.
 
-The file extension picks the format — CairoMakie renders `.png`, `.svg` and `.pdf`, so a
-publication-ready vector figure is just a different `output`. This applies to every `tableau`
-method; the examples below use the PhysiCell one (`using PhysiCellModelManager`):
+!!! tierfull
+    Satellite axes have their decorations hidden. They share the focal panel's extent, so their
+    ticks would restate the focal panel's three to eight times over; the focal axis keeps its
+    ticks and carries the coordinates for the whole figure.
+
+    The legend is built from the labelled plots on the **focal** axis, so give each focal series
+    a `label` and leave the satellites alone — their key is the colorbar beside them.
+
+| `legend` | where the legend goes |
+|---|---|
+| `:auto` (default) | the empty grid cell nearest the focal panel, costing no space; an in-axis corner when the grid is full |
+| a `Symbol` (`:rt`, `:lb`, …) | that corner, inside the focal axis, on an opaque background |
+| `(row, col)` | that grid cell — warns if it collides with the focal panel or a satellite |
+| `nothing` | no legend |
+
+## A colorbar on the focal panel
+
+!!! tierbrief
+    `focal_colorbar_label` gives the focal panel a colorbar of its own, for a focal plot whose
+    colour encodes a continuous value rather than discrete categories.
+
+!!! tierfull
+    The focal panel then moves into the same axis-plus-colorbar cell the satellites use, and
+    the focal callback must **return** its plot — the convention the satellites already follow.
+    Such a plot carries no labelled series for a legend to read, so pass `legend=nothing`
+    alongside it.
 
 ```julia
-tableau(Simulation, 1; output = "figure.pdf")     # vector, for a paper
-tableau(Simulation, 1; output = "figure.svg")     # vector, to hand-edit
+tableau(ax -> scatter!(ax, positions; color = pressure, colormap = :plasma),
+        [ax -> heatmap!(ax, xs, ys, oxygen)];
+        focal_colorbar_label = "pressure", legend = nothing,
+        satellite_titles = ["oxygen"], output = "scene.pdf")
 ```
 
-For one cell layer plus a single substrate (511 cells, a 50×50 voxel grid) the three formats come
-out very differently:
+## Output and file formats
+
+!!! tierbrief
+    `tableau` writes `tableau.png` and returns that path; `output=nothing` returns the Makie
+    `Figure` instead. Writing errors if the file already exists unless you pass
+    `overwrite=true`.
+
+!!! tierfull
+    The file extension on `output` picks the format — CairoMakie renders `.png`, `.pdf` and `.svg`,
+    so a publication-ready vector figure is just a different filename. One cell layer (511
+    cells) plus a single 50×50 voxel substrate comes out very differently in the three:
 
 | format | size | notes |
 |---|---:|---|
 | `.png` | 154 KB | raster; the default, best for exploring |
-| `.pdf` | **52 KB** | vector, and the *smallest* of the three — the natural choice for publication |
+| `.pdf` | **52 KB** | vector, stream-compressed, and the *smallest* of the three — the publication choice |
 | `.svg` | 739 KB | vector, but uncompressed text, so much the largest |
 
-Two caveats worth knowing before reaching for `.svg`:
+!!! tierfull
+    Two things are worth knowing before reaching for `.svg`. CairoMakie's SVG contains no
+    `<text>` elements at all — every label is emitted as glyph outlines, so an axis label cannot
+    be retyped in Illustrator. ([`montage`](@ref) and [`storyboard`](@ref) stitch rather than
+    render, and do emit real `<text>`, so their titles and legends stay editable; that is the
+    path to take when editable text is the requirement.) And a heatmap becomes one path per
+    voxel: roughly 2500 of them for a 50×50 grid, which is where the bulk of that 739 KB is, so
+    a finer mesh inflates the file faster than more cells do.
 
-- **Text is converted to outlines.** CairoMakie's SVG contains no `<text>` elements at all — labels
-  become glyph paths — so you cannot retype an axis label in Illustrator. (The stitched verbs,
-  [`montage`](@ref) and [`storyboard`](@ref), *do* emit real `<text>`, so their titles and legends
-  stay editable. If editable text is what you need, that is the path that gives it.)
-- **Heatmaps become one path per voxel.** The bulk of that 739 KB is ~2500 `<path>` elements for a
-  50×50 substrate grid, not the cell scatter. A finer mesh or more substrates inflates it quickly.
+    A tableau movie needs a video container, and asking for `.svg` there fails in Makie's
+    recorder rather than quietly producing something odd.
 
-A tableau **movie** still needs a video container; asking for `.svg` there fails in Makie's
-recorder rather than silently producing something odd.
+!!! tierjournal "2026-08-05 — PDF, not SVG, for a publication tableau"
+    Measured one cell layer plus a 50x50 substrate at 154 KB (.png), 52 KB (.pdf) and 739 KB
+    (.svg). PDF is vector AND stream-compressed, so it is the smallest of the three — the
+    opposite of the "vector costs you size" caveat that was going to be written. The SVG bulk
+    is ~2500 heatmap paths, not the cell scatter, so a finer mesh inflates it faster than more
+    cells do.
 
-## Choosing which cells appear, and what their colour means
+## From a simulation
 
-For the PhysiCell methods, the focal cell layer is configurable in two independent ways.
-
-**Which cells** — `cell_types` selects by name (validated against the cell types the *config*
-defines, so asking for one that is momentarily absent is not an error), and `include_dead=false`
-drops cells flagged dead:
-
-```julia
-tableau(Simulation, 1; cell_types = ["nk", "caf"])       # just these two
-tableau(Simulation, 1; include_dead = false)             # live cells only
-```
-
-**What the colour encodes** — `color` names any column of the cells table (see
-`cellLabels(snapshot)` for the ~130 available). The column's type picks the visual mode:
-
-| `color` | mode | key |
-|---|---|---|
-| `:cell_type_name` (default), or any string/bool column | categorical | one labelled series per value + a **legend** |
-| `:pressure`, `:damage`, `:total_volume`, … | continuous | a `cell_colormap` ramp + a **colorbar** |
+!!! tierbrief
+    Loading PhysiCellOutput or PhysiCellModelManager adds methods that build the callbacks for
+    you from a snapshot's cells and substrates, along with keywords for choosing which cells
+    appear and what their colour means — `substrates`, `color`, `color_mode`, `cell_colormap`,
+    `cell_types` and `include_dead`. Those are documented in
+    [PhysiCell simulations](@ref physicell-page).
 
 ```julia
-tableau(Simulation, 1; color = :pressure)                          # ramp + colorbar
-tableau(Simulation, 1; color = :current_phase, color_mode = :categorical)
+using CairoMakie, PhysiCellModelManager, Montage
+
+tableau(Simulation, 1; output = "figure.pdf")
 ```
 
-`color_mode` (`:auto`, `:categorical`, `:continuous`) overrides the choice — needed for
-numeric-but-discrete columns such as `:current_phase`, which look wrong on a continuous ramp.
-Note `cell_colormap` is the *cells'* ramp and is deliberately separate from `colormap`, which
-belongs to the substrate heatmaps.
+## Animating
 
-Colours are chosen to make figures comparable with one another:
+!!! tierbrief
+    A tableau is a movie when its `index` covers several timepoints: the layout above is built
+    once and the whole scene is stepped through `Makie.record`, with the plotting callbacks
+    drawing `Observable`s that the record loop updates per frame. You reach it through a data
+    source rather than through the generic method — see [Movies](@ref movies-page).
 
-- **Cells are drawn in PhysiCell's own colours**, read from the run's `legend.svg`. So a `tableau`
-  and a `montage`/`storyboard` of the same simulation agree, and the types keep the colours you
-  already recognise from PhysiCell's output rather than being reassigned from Makie's palette.
-- **Where a colour is not known** (a run without `legend.svg`, or a categorical column that is not
-  a cell type), palette slots are used and pinned to the config's cell-type list rather than to
-  plotting order — so `caf` keeps the same colour whether you plot every type or filter down to
-  `["caf", "nk"]`.
-- **In a movie, a continuous `color` gets a globally fixed colorrange** — its min/max across every
-  frame, computed *after* filtering — so the scale is comparable frame to frame, exactly as the
-  substrate heatmaps already are. This matters more than it sounds: at `t = 0` a quantity like
-  pressure is often uniformly zero, which a per-frame scale would render as a meaningless full-range
-  spread.
-
-## Animating over time
-
-With an interactive time dimension, a `tableau` can be **animated**: the whole scene evolves frame
-by frame via `Makie.record`. The generic layout is reused — the plotting callbacks draw
-`Observable`s that the record loop updates per frame. In practice you drive this through a
-data-source method (for PhysiCell simulations, `index=:all` on the simulation method); see
-[Movies](@ref) and [Extensions & PhysiCell](@ref).
-
-```@docs
-tableau
+```julia
+tableau(Simulation, 1; index = :all, output = "scene.mp4")
 ```
