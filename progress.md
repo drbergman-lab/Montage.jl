@@ -732,3 +732,79 @@ heatmap/contour, rotate 3-D), the first three are server round-trips that need n
 plotting library, and the fourth needs WebGL — which **CairoMakie cannot do either**. So the
 reserved `dashboard` verb should be designed around the browser-based architecture that actually
 shipped, not the Observable-driven one the to-do describes.
+
+---
+
+## Session: one `using` line for PhysiCell, and a docs revamp (2026-09-21)
+
+Branch `claude/pcmm-physiceloutput-docs-a1d06b`. Three asks: make the PCMM path pull PhysiCellOutput
+in on its own, make the docs robust, and drop the `PhysiCellMontage.jl` plan the docs still advertised.
+
+### The extension that needed two `using`s
+
+`MontagePhysiCellModelManagerExt` is triggered by **PhysiCellModelManager + PhysiCellOutput**,
+because the adapter genuinely uses both — the trigger list is not negotiable. The problem was the
+compat bound: `PhysiCellModelManager = "0.3"`, and PCMM 0.3 does **not** depend on PhysiCellOutput.
+So the second trigger could only be satisfied by the user typing `using PhysiCellOutput`, which
+nothing in the API hinted at.
+
+PCMM **0.4** took `PhysiCellOutput` as a hard dependency (registry `Deps.toml`, `["0.4-0"]`). A Julia
+extension fires when its trigger packages are loaded for *any* reason, including as another
+package's dependency — so under PCMM ≥ 0.4 the trigger is satisfied by `using PhysiCellModelManager`
+alone. The whole fix is one compat line: `PhysiCellModelManager = "0.4, 0.5"`.
+
+Verified rather than assumed, in two throwaway environments against the dev'd package:
+
+| PCMM | `MontagePhysiCellOutputExt` | `MontagePhysiCellModelManagerExt` | `montage(Simulation, ids)` |
+|---|---|---|---|
+| 0.4.0 | loaded | loaded | resolves |
+| 0.5.1 | loaded | loaded | resolves |
+
+with only `using PhysiCellModelManager, Montage` in the session. Keeping `"0.3"` in the bound was
+rejected: it would have made the docs' promise conditional on a version the reader cannot see, which
+is worse than requiring an upgrade to a release that is already two minor versions back.
+
+Two incidental findings about PCMM 0.5.1, both good for us: `PCMMOutput` survives as an alias for
+`MMOutput`, so the convenience overloads still dispatch; and PCMM now `import`s PhysiCellOutput's
+`PhysiCellSequence`/`PhysiCellSnapshot` rather than defining its own, so the qualification in our
+extension is belt-and-braces rather than load-bearing.
+
+### Docs: the gap was coverage, not prose
+
+The site had six pages and documented **two** of the six extensions. Every PhysiCell method — the
+whole way the package is actually used — existed only in `ext/` docstrings that no page rendered,
+because `docs/Project.toml` carried nothing but Documenter and Montage, so those docstrings did not
+exist at build time. `reference.md` was a bare `@index` over a manual that had never seen them.
+
+The rebuild, following the tiered-docs house style:
+
+- **The docs environment now carries every weak dependency**, and `docs/make.jl` *errors* if any of
+  the six extensions fails to load. A half-empty API reference is now a build failure rather than a
+  silent omission.
+- **`man/physicell.md` is new** and owns both front doors, the `index` still-vs-movie rule, cell
+  filtering, the legend, and colouring by data. The verb pages shed the PhysiCell keywords they had
+  accumulated and link there instead.
+- **Tiers.** Code / Brief / Full / Dev / Journal, selected in the sidebar, gating `!!! tier*` blocks.
+  `docs/journal.jl` collects the dated `tierjournal` blocks into `dev/journal.md` and warns when a
+  page's blocks run deepest-first.
+- **Executed examples.** The quick-start figures are composed during the build and embedded inline.
+  Two mechanisms were tried: Documenter renders `image/svg+xml` into a `data:` URI, which a single
+  `#` in a hex fill would truncate, so the helper advertises `text/html` and emits the SVG inline
+  instead. A broken verb now fails the docs build.
+- `dev/architecture.md` (module map, the data flow of one movie call, the invariants, the commands)
+  and `AGENTS.md` are new; `AGENTS.md` points at `CLAUDE.md` for the working agreement rather than
+  restating it.
+
+### `PhysiCellMontage.jl` is gone from the docs
+
+`index.md` and `extensions.md` both advertised a planned move of PhysiCell support into a separate
+package, one of them calling it a breaking change "being settled before Montage's first
+registration" — Montage has been registered since v0.1.0. The plan was decided against long ago;
+what survives is a dated journal entry on the extensions page explaining why extensions beat a second
+package, which is what a reader is actually served by.
+
+### Consequence for the PCMM handoff
+
+`PCMM_DOCS_HANDOFF.md` (untracked) still holds: PCMM's own docs should get a "Visualizing simulations
+with Montage" page. But it can now be much shorter than drafted — Montage's `man/physicell.md` is the
+reference for these methods, so the PCMM page is an orientation plus links, not a restatement.

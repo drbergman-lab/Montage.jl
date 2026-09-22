@@ -196,18 +196,19 @@ Row order follows the config's own cell-type order.
 
 ---
 
-## Feature: PCMM Extension
+## Feature: PhysiCell extensions (folder paths and simulation ids)
 
-**One-line description:** Add convenience methods that resolve PhysiCell simulation ids to files, loaded only when PCMM is present.
+**One-line description:** Drive the verbs straight from PhysiCell output — by output-folder path, or by simulation id — through extensions loaded only when the relevant PhysiCell package is present.
 
 **Priority:** Must-have (this is how the tool is actually used in practice).
 
-**Planned refactor (stays in Montage):** add a **folder-path front door** so non-PCMM PhysiCell users are supported — a `MontagePhysiCellOutputExt` (weakdep `PhysiCellOutput.jl`) exposing `montage(PhysiCellOutput(path))` etc. The PCMM id door (`MontagePhysiCellModelManagerExt`, `MontageCairoMakiePCMMExt`) becomes a **thin adapter that delegates** to the folder-path methods (id→folder→`PhysiCellOutput`), so both front doors share one code path and everyone still types `using Montage`. `montage(::Type{Simulation})` **stays in Montage** — not a breaking change. See [CLAUDE.md](CLAUDE.md) To-dos "PhysiCell support stays in Montage".
+**Two front doors, one reader:** `MontagePhysiCellOutputExt` (weakdep `PhysiCellOutput.jl`) holds the real logic and dispatches on `PhysiCellSequence` (an output folder) and `PhysiCellSnapshot` (one state), so PhysiCell users who do not use PCMM are supported. The id door (`MontagePhysiCellModelManagerExt`, `MontageCairoMakiePCMMExt`) is a **thin adapter**: it resolves a simulation id to its output folder and delegates. Both read through `PhysiCellOutput`, so there is one reader path rather than two that could drift, and everyone still types `using Montage`.
 
-**Status:** `montage(::Type{Simulation}, …)` **implemented (2026-07-21)**, `storyboard(::Type{Simulation}, sim_id; …)` **implemented (2026-07-22)**, and `tableau(::Type{Simulation}, sim_id; …)` incl. movies **implemented (2026-07-23)**.
+**Status:** `montage(::Type{Simulation}, …)` **implemented (2026-07-21)**, `storyboard(::Type{Simulation}, sim_id; …)` **implemented (2026-07-22)**, `tableau(::Type{Simulation}, sim_id; …)` incl. movies **implemented (2026-07-23)**, folder-path door **implemented (2026-07-27)**, single-`using` loading **implemented (2026-09-21)**.
 
 **Behavioral specification:**
-- Ships as `ext/MontagePhysiCellModelManagerExt.jl`, wired via `[weakdeps]` + `[extensions]` in `Project.toml`. Triggered by **PhysiCellModelManager** (the added knowledge is the PhysiCell output-file convention), though `Simulation`/`simulationIDs`/`trialFolder`/`dataDir` are ModelManager's, re-exported by PCMM.
+- Ships as `ext/MontagePhysiCellModelManagerExt.jl`, wired via `[weakdeps]` + `[extensions]` in `Project.toml`. Triggered by **PhysiCellModelManager + PhysiCellOutput**, since the adapter uses both; `Simulation`/`simulationIDs`/`trialFolder`/`dataDir` are ModelManager's, re-exported by PCMM.
+- **Loading:** `using PhysiCellModelManager, Montage` is sufficient. PCMM 0.4 took `PhysiCellOutput` as a dependency, so loading PCMM loads PhysiCellOutput too and satisfies the trigger without the user naming it; `[compat] PhysiCellModelManager = "0.4, 0.5"` makes that promise unconditional. Verified on PCMM 0.4.0 and 0.5.1. Driving the verbs from folders alone needs only `using PhysiCellOutput, Montage`.
 - `montage(::Type{Simulation}, sim_ids; index=:final, title=(id->"Sim $id"), panel_width=300, title_height=34, pad=12, output::Union{Nothing,AbstractString}=<auto>, overwrite=false, framerate=15)`. `sim_ids` is required — `simulationIDs()` covers "all sims" explicitly; there is no all-sims default. The **`index` value decides still image vs. movie** (one opinionated call that produces output; no separate `frames` kwarg).
   - **Still image** (`index` is `:final`/`:initial`, or an Integer): one panel per sim selected the same way as PCMM's `PhysiCellSnapshot` — a Symbol names the state SVG, an Integer selects that indexed snapshot (`snapshotNNNNNNNN.svg`). Missing files skipped with a warning. Writes an SVG.
   - **Movie** (`index` is `:all` or a vector/range of snapshot indices): each panel plays that sim's snapshot sequence (index-aligned, truncated to shortest); rendered via `record` (requires the movie extension).
@@ -222,6 +223,27 @@ Row order follows the config's own cell-type order.
 **Acceptance criteria:**
 - With PCMM loaded, `montage(Simulation, simulationIDs())` (still) and `montage(Simulation, ids; index=:all, output="x.mp4")` (movie) work end-to-end on the dev project. ✓ verified (static grid + 4-sim movie).
 - With PCMM absent, the core loads and the generic verbs work; the extension methods are simply unavailable. ✓
+- `using PhysiCellModelManager, Montage`, with no other `using`, loads `MontagePhysiCellOutputExt` **and** `MontagePhysiCellModelManagerExt`, and `montage(Simulation, ids)` resolves. ✓ verified on PCMM 0.4.0 and 0.5.1.
+
+---
+
+## Feature: Documentation site — **implemented 2026-09-21**
+
+**One-line description:** A Documenter.jl manual that covers every method the package and its extensions provide, at a depth the reader chooses, and that fails its build when the docs stop matching the code.
+
+**Priority:** Must-have (an undocumented method is an unusable one — the whole PhysiCell surface was previously reachable only by reading `ext/`).
+
+**Behavioral specification:**
+- **Tiered pages.** Each page carries a sidebar detail selector — Code, Brief, Full, Dev, Journal — that gates `!!! tierbrief` / `tierfull` / `tierdev` / `tierjournal` blocks client-side (`docs/src/assets/tiers.css`, `tiers.js`). The spine (headings, code, tables) is always visible, so the Code tier stands alone. The choice persists in `localStorage` and `?tier=code` overrides it. Without JavaScript, everything shows.
+- **A generated journal.** `docs/journal.jl` collects every `!!! tierjournal "YYYY-MM-DD — Title"` block into `docs/src/dev/journal.md`, newest first, and warns when a page's tier blocks are out of order. The entries live on the pages they concern; the journal is the same source read in time order.
+- **Coverage.** `docs/make.jl` loads every weak dependency and errors if any of the six extensions fails to load, so the API reference can never be quietly half-empty. `reference.md` renders the exported API plus the extension methods; `dev/architecture.md` renders the internal docstrings. `checkdocs=:all`, so a docstring that appears on no page fails the build.
+- **Executed examples.** The quick-start figures on the home, `montage`, `storyboard` and `tableau` pages are composed during the build from fixtures the page creates in a temp directory, and embedded inline (SVG for the stitched verbs, a Makie `Figure` for `tableau`). PhysiCell examples stay non-executing — there is no simulation data at build time.
+- **Pages:** home, one per verb, movies, PhysiCell simulations, extensions, API reference, and the Dev-gated architecture and journal.
+
+**Acceptance criteria:**
+- `julia --project=docs docs/make.jl` builds clean, with the doctests passing. ✓
+- Every exported name and every extension method appears in the API reference. ✓
+- No page mentions a plan, a rename, or a package that does not exist. ✓
 
 ---
 

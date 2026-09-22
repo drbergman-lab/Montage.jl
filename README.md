@@ -7,8 +7,6 @@
 
 Compose PhysiCell visualizations into intentionally-structured composite figures — and movies.
 
-All three verbs are implemented: `montage` and `tableau` render stills and movies, `storyboard` is static by design. See [Implementation Status](#implementation-status) for the feature-by-feature record, [PRD.md](PRD.md) for the behavioral spec, and [progress.md](progress.md) for design rationale.
-
 ## What it does
 
 Montage gives you three verbs for the three distinct things you might want a composite figure to say. Static or animated is a mostly separate choice: `montage` and `tableau` each render a still figure or a movie, while `storyboard` is deliberately static — it *is* the filmstrip.
@@ -23,7 +21,7 @@ Montage gives you three verbs for the three distinct things you might want a com
 - **`storyboard`** — e.g. one simulation's time course as an ordered, timestamp-titled strip (a static filmstrip for a poster or paper).
 - **`tableau`** — e.g. one simulation at one time: the cell layer centered, each substrate's heatmap (with colorbar) arranged around it, all sharing a spatial extent.
 
-**Movies** (a headline feature): a `montage` movie animates every panel through time simultaneously — compare dynamics across simulations, or play one simulation's own frames; a `tableau` movie animates the whole composed scene together. (`storyboard` is deliberately static — the still filmstrip.)
+**Movies** (a headline feature): a `montage` movie animates every panel through time simultaneously — compare dynamics across simulations, or play one simulation's own frames; a `tableau` movie animates the whole composed scene together.
 
 ## Usage
 
@@ -38,14 +36,22 @@ using Rsvg, Cairo, FFMPEG                              # unlocks the movie exten
 montage([Panel(framesA; title="A"), Panel(framesB; title="B")]; output="compare.mp4", framerate=15)
 ```
 
-With [PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelManager.jl) loaded, a package **extension** adds convenience methods that resolve simulation ids to files for you:
+### PhysiCell simulations
+
+Package extensions drive the verbs straight from PhysiCell output. There are two front doors, and
+they share one reader: simulation ids through
+[PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelManager.jl) (PCMM), and
+output-folder paths through
+[PhysiCellOutput.jl](https://github.com/drbergman-lab/PhysiCellOutput.jl) for people who do not use
+PCMM. PCMM depends on PhysiCellOutput, so one `using` line is enough:
 
 ```julia
 using PhysiCellModelManager, Montage
 
 # montage: compare across sims. `index` decides still image vs. movie
-montage(Simulation, simulationIDs())                              # final state of every sim, gridded + written
+montage(Simulation, simulationIDs())                             # final state of every sim, gridded + written
 montage(Simulation, [1, 2, 3]; index=:initial, output=nothing)   # initial states, returned as a string
+montage(sampling)                                                # or hand it a trial, and its sims are used
 
 # storyboard: one sim's time evolution as a static filmstrip with timestamp titles
 storyboard(Simulation, 32)                                       # 4 evenly-spaced frames
@@ -60,7 +66,21 @@ using Rsvg, Cairo, FFMPEG                                         # movie extens
 montage(Simulation, [1, 2, 22, 32]; index=:all, output="compare.mp4", framerate=15)  # their movies, in lockstep
 ```
 
-The core never depends on PhysiCellModelManager or CairoMakie — install and use Montage on generic image inputs without them; the movie extension activates once `Rsvg`, `Cairo`, and `FFMPEG` are loaded, and the PCMM methods will appear when PCMM is present.
+Without PCMM, point the same verbs at an output folder:
+
+```julia
+using PhysiCellOutput, Montage
+
+montage(PhysiCellSequence.(["runA/output", "runB/output"]))      # final state of each run
+storyboard(PhysiCellSequence("runA/output"); n_snapshots=6)
+```
+
+Both doors take the same figure keywords — `cell_types` and `include_dead` choose which cells are
+drawn, `color` repaints them by any cells-table column, and a cell-type legend in PhysiCell's own
+colours is included by default.
+
+The core never depends on PhysiCellModelManager, PhysiCellOutput or CairoMakie — install and use
+Montage on generic image inputs without them; each extension activates when you load its packages.
 
 ## Installation
 
@@ -73,6 +93,17 @@ Montage is registered in the [BergmanLabRegistry](https://github.com/drbergman-l
 alongside [PhysiCellModelManager.jl](https://github.com/drbergman-lab/PhysiCellModelManager.jl) and
 [PhysiCellOutput.jl](https://github.com/drbergman-lab/PhysiCellOutput.jl), so the registry only
 needs adding once.
+
+## Documentation
+
+The [manual](https://drbergman-lab.github.io/Montage.jl/dev/) covers each verb, movies, the
+PhysiCell methods and the API reference. Its pages carry a **detail selector** — Code, Brief, Full,
+Dev, Journal — so the same page serves a reader who wants only the call and one who wants the
+reasoning, the extension contracts, or the dated design notes.
+
+For contributors: [`docs/src/dev/architecture.md`](docs/src/dev/architecture.md) is the module map
+and data flow, [AGENTS.md](AGENTS.md) has the exact commands, [PRD.md](PRD.md) the behavioral spec,
+and [progress.md](progress.md) the session journal.
 
 ## Implementation Status
 
@@ -95,6 +126,8 @@ needs adding once.
 - [x] Cell filtering for `montage`/`storyboard` — `cell_types`/`include_dead` restrict which cells are drawn by dropping the non-matching `<g id="cell…" type=… dead=…>` groups from each snapshot SVG (no re-rendering); PhysiCell's "N agents" caption is corrected to the number shown and the legend narrows to the kept types. Built on a new general core seam: `Panel(…; transform)`, a function `SVG text -> SVG text` applied before placement, defaulting to a verifiably free `identity`, and accepting a per-frame `Vector` for movies. Core stays free of any PhysiCell or colour knowledge
 - [x] Colouring cells by data in `montage`/`storyboard` — `color` names any cells-table column and repaints each cell along `colormap` by joining `id="cell…"` to the `ID` column and rewriting its fill; the cell-type legend is replaced by a **colorbar** (one gradient rect plus flat text, so it stays editable). The range is pooled across every panel and frame and computed after filtering, so a colour means the same thing throughout the figure. Colormaps are a small built-in set (`:viridis`/`:plasma`/`:grays`) to keep this path dependency-free — `tableau` has Makie's full set. Core gained a third legend form, a draw function, so it can place a colorbar without knowing what one is
 - [x] `montage` grid shape — `ncols` kwarg on `montage` (default `nothing` keeps the near-square `ceil(sqrt(n))` layout) threads through stills, `MontageSpec`, and movie frames; panels listed row-major fill a conditions-by-replicates grid
+- [x] One `using` line for PhysiCell — `[compat] PhysiCellModelManager = "0.4, 0.5"`. PCMM 0.4 took PhysiCellOutput as a dependency, so loading PCMM loads PhysiCellOutput too and both PhysiCell extensions activate without the user naming it; verified on PCMM 0.4.0 and 0.5.1
+- [x] Documentation site — Documenter manual with a reader-selectable detail tier (Code/Brief/Full/Dev/Journal), a PhysiCell page covering both front doors, all six extensions, an API reference that renders the extension docstrings too, `dev/architecture.md`, and a journal generated from the pages' dated design notes. Quick-start figures are composed at build time, so an API break fails the docs build
 - [x] Core test suite — SVG-backend verbs (montage, storyboard) + movie spec + legend placement on hand-written SVGs; no heavy deps
 
 ### Planned
