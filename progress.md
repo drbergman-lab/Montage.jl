@@ -808,3 +808,53 @@ package, which is what a reader is actually served by.
 `PCMM_DOCS_HANDOFF.md` (untracked) still holds: PCMM's own docs should get a "Visualizing simulations
 with Montage" page. But it can now be much shorter than drafted — Montage's `man/physicell.md` is the
 reference for these methods, so the PCMM page is an orientation plus links, not a restatement.
+
+---
+
+## Session: the v0.3.0 tag's docs deploy lost a race (2026-09-22)
+
+Branch `feature/serialize-docs-deploy`. CI went red on the `v0.3.0` tag while the identical
+commit on `main` went green — the Documentation job, and only on the tag.
+
+### What actually failed
+
+Not the build. `makedocs` finished; `deploydocs` died on the push:
+
+```
+! [remote rejected] HEAD -> gh-pages (cannot lock ref 'refs/heads/gh-pages':
+  is at fdb3ec16d2e4ba60625ac7a9081ee63d454c31ac but expected 5172eda1929611c562ca98644f4d4fcf7fea0160)
+```
+
+Two Documentation jobs ran against commit `5849bb7` at once — main's from 17:22:43 and the tag's
+from 17:24:17, both finishing 17:35:31. Both push to `gh-pages` (main writes `dev/`, the tag writes
+`v0.3.0/`, `stable` and `versions.js`). The tag's job cloned `gh-pages` at `5172eda`, main's deploy
+landed at `fdb3ec1` in the meantime, and the tag's push was rejected against a ref that had moved.
+
+The workflow-level `concurrency` group is `${{ github.workflow }}-${{ github.ref }}`, so a branch
+and a tag are in *different* groups and nothing serialized them.
+
+**Why now and not at v0.2.1**, whose tag deploy passed: the `bump v0.3.0` commit rode in the same
+merge as the feature, so TagBot created the tag while main's CI was still running. The older habit
+of bumping in a separate commit some time after the feature landed spaced the two deploys apart by
+accident, not by design — the race was always there.
+
+### The fix
+
+A job-level `concurrency` group on `docs`, so every *deploying* build queues behind the last one:
+
+```yaml
+    concurrency:
+      group: docs-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+      cancel-in-progress: false
+```
+
+Pull-request builds do not deploy, so they keep a per-ref group and still run in parallel; pushes
+to main, tag pushes and manual dispatches all share one group. Rejected `forcepush=true` on
+`deploydocs`, which also "fixes" the rejection: the loser would force-push a `gh-pages` tree cloned
+*before* the winner's commit, reverting whichever deploy happened to finish first.
+
+### Left behind
+
+The v0.3.0 deploy never landed, so `gh-pages` has the new `dev/` but no `v0.3`/`v0.3.0`, and
+`stable` still resolves to v0.2.1 — the README's stable badge points at the old docs. Re-running
+the failed Documentation job republishes it; that is a publish, so it is the maintainer's to run.

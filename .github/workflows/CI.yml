@@ -50,6 +50,18 @@ jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
+    # Every deploying build pushes to the same gh-pages branch, so two of them must
+    # never overlap. Merging a version bump to main makes TagBot create the tag right
+    # away, and the tag's build then races main's on the very same commit; the loser
+    # is rejected with
+    #   ! [remote rejected] HEAD -> gh-pages (cannot lock ref 'refs/heads/gh-pages':
+    #     is at <sha> but expected <sha>)
+    # The workflow-level group above is keyed on github.ref, which puts those two in
+    # different groups, so the docs job needs a group of its own. Pull-request builds
+    # do not deploy, so they keep a per-ref group and still run in parallel.
+    concurrency:
+      group: docs-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+      cancel-in-progress: false
     permissions:
       actions: write # needed to allow julia-actions/cache to proactively delete old caches that it has created
       contents: write
