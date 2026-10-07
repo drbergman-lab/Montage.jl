@@ -26,13 +26,14 @@ end
 # Internal: build the tableau `Figure` (layout only, no output). `focal` draws into the
 # centered axis; each `satellites[i]` draws into a ringed axis and returns the plot its
 # colorbar reads. All axes share `xlims`/`ylims`. `legend` is handled by `_placeLegend!`.
+# `colorbar_ticklabelspace` is forwarded to every `Colorbar` as its `ticklabelspace`.
 function _tableauFigure(focal, satellites;
                         focal_title="",                     # String or an Observable (animated)
                         satellite_titles::AbstractVector=String[],
                         colorbar_labels::AbstractVector=String[],
                         focal_colorbar_label=nothing,
                         xlims=nothing, ylims=nothing, size=(1000, 1000),
-                        legend=:auto)
+                        legend=:auto, colorbar_ticklabelspace=CairoMakie.Makie.automatic)
     fig = CairoMakie.Figure(; size = size)
     n = length(satellites)
     nrow, ncol, fpos, spots = _ringSlots(n)
@@ -51,7 +52,8 @@ function _tableauFigure(focal, satellites;
         gl = fig[fpos[1], fpos[2]] = CairoMakie.GridLayout()
         ax = CairoMakie.Axis(gl[1, 1]; title = focal_title, aspect = CairoMakie.DataAspect())
         plt = focal(ax)
-        CairoMakie.Colorbar(gl[1, 2], plt; label = focal_colorbar_label)
+        CairoMakie.Colorbar(gl[1, 2], plt; label = focal_colorbar_label,
+                            ticklabelspace = colorbar_ticklabelspace)
         ax
     end
     share!(fax)
@@ -63,7 +65,8 @@ function _tableauFigure(focal, satellites;
         plt = satellites[i](ax)
         share!(ax)
         CairoMakie.hidedecorations!(ax)   # satellites share the focal's extent; keep them clean
-        CairoMakie.Colorbar(gl[1, 2], plt; label = label(colorbar_labels, i))
+        CairoMakie.Colorbar(gl[1, 2], plt; label = label(colorbar_labels, i),
+                            ticklabelspace = colorbar_ticklabelspace)
     end
 
     _placeLegend!(fig, fax, legend, fpos, spots, nrow, ncol)
@@ -100,7 +103,8 @@ end
 """
     tableau(focal, satellites; focal_title="", satellite_titles=[], colorbar_labels=[],
             focal_colorbar_label=nothing, xlims=nothing, ylims=nothing, legend=:auto,
-            size=(1000, 1000), output="tableau.png", overwrite=false)
+            colorbar_ticklabelspace=automatic, size=(1000, 1000), output="tableau.png",
+            overwrite=false)
 
 Data-agnostic tableau (CairoMakie extension): a `focal` panel centered with `satellites`
 auto-ringed around it, each satellite paired with a colorbar, all sharing `xlims`/`ylims`.
@@ -117,6 +121,12 @@ encodes a continuous value rather than discrete categories. `focal` must then re
 the same convention the satellites already follow. Such a plot has no labeled series, so pass
 `legend=nothing` alongside it.
 
+`colorbar_ticklabelspace` is every colorbar's `ticklabelspace` (Makie's `automatic` by default:
+just wide enough for its tick labels). Give it a fixed width in pixels when drawing a **series of
+stills** that must line up — a dashboard frame, a figure panel per timepoint. Each frame's
+colorrange is its own, so a frame whose ticks read `1.25×10⁻⁴` needs more room than one whose
+ticks read `0.08`, and left automatic that difference pushes every axis in the grid over.
+
 # Example
 ```julia
 using CairoMakie, Montage
@@ -129,10 +139,12 @@ function Montage.tableau(focal::Function, satellites::AbstractVector;
                          satellite_titles::AbstractVector=String[],
                          colorbar_labels::AbstractVector=String[],
                          focal_colorbar_label=nothing,
-                         xlims=nothing, ylims=nothing, legend=:auto, size=(1000, 1000),
+                         xlims=nothing, ylims=nothing, legend=:auto,
+                         colorbar_ticklabelspace=CairoMakie.Makie.automatic, size=(1000, 1000),
                          output::Union{Nothing,AbstractString}="tableau.png", overwrite::Bool=false)
     fig = _tableauFigure(focal, satellites; focal_title, satellite_titles,
-                         colorbar_labels, focal_colorbar_label, xlims, ylims, size, legend)
+                         colorbar_labels, focal_colorbar_label, xlims, ylims, size, legend,
+                         colorbar_ticklabelspace)
     output === nothing && return fig
     Montage._assertWritable(output, overwrite)
     mkpath(dirname(abspath(String(output))))

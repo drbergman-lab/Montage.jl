@@ -118,6 +118,42 @@ tableau(ax -> scatter!(ax, positions; color = pressure, colormap = :plasma),
         satellite_titles = ["oxygen"], output = "scene.pdf")
 ```
 
+## Stills that line up
+
+!!! tierbrief
+    `colorbar_ticklabelspace` fixes the width reserved beside every colorbar for its tick
+    labels, in pixels. Set it when you render a series of stills that must share one layout —
+    a dashboard frame, one panel per timepoint.
+
+!!! tierfull
+    By default (Makie's `automatic`) each colorbar reserves exactly the room its own labels
+    need, and the grid is solved around that. A still is self-contained, so that is right for a
+    single figure. Across a *series* of stills, each with its own colorrange, it is not: a frame
+    whose ticks read `1.25×10⁻⁴` reserves about 55 px where one reading `0.65` reserves 20, and
+    every axis in the grid slides over by the difference. A fixed value makes the layout
+    identical from frame to frame; a label wider than it overflows into the column gap rather
+    than moving anything. A movie has no such problem — its colorranges are fixed over all
+    frames — so it does not need this.
+
+```julia
+for (k, snap) in enumerate(snapshots)
+    tableau(cells(snap), fields(snap); colorbar_ticklabelspace = 60,
+            output = "frames/frame$k.png")
+end
+```
+
+!!! tierjournal "2026-10-07 — one layout for a series of stills"
+    PhysiCellDashboard renders a run one snapshot at a time, each a `tableau` still with its own
+    colorrange, and the grid visibly reflowed whenever a substrate's ticks switched to scientific
+    notation. Measured at Makie's default tick font, the reserved width ran from 16 px (`0`–`20`)
+    through 27 px (`0`–`0.08`) to 55 px (`7.5×10⁻⁵`–`1.25×10⁻⁴`) and 63 px with a minus sign.
+    Makie's `ticklabelspace` already exists for exactly this, so the layout engine forwards it to
+    every colorbar and nothing else changes. Horizontal colorbars were considered — a label's
+    *height* is constant — and rejected: wide labels along a short bar overlap each other.
+    Reserving the width is a real cost at small figure sizes, since the legend fixes the width of
+    its own column and the remaining columns absorb all of it, which is why the default stays
+    `automatic` and the value is the caller's.
+
 ## Output and file formats
 
 !!! tierbrief
