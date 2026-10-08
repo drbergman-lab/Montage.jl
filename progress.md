@@ -808,3 +808,70 @@ package, which is what a reader is actually served by.
 `PCMM_DOCS_HANDOFF.md` (untracked) still holds: PCMM's own docs should get a "Visualizing simulations
 with Montage" page. But it can now be much shorter than drafted — Montage's `man/physicell.md` is the
 reference for these methods, so the PCMM page is an orientation plus links, not a restatement.
+
+## Session: a tableau that holds still across frames (2026-10-07)
+
+Branch `feature/tableau-stable-frames`. Raised from PhysiCellDashboard, which renders a run one
+`tableau` still per snapshot: stepping through frames, the cell-type legend changed and the whole
+grid reflowed. Two causes, both in the tableau extensions, neither visible in a single still.
+
+### The legend listed what was present, not what the model defines
+
+`_tableauStill` drew one series per cell type *with cells in that snapshot*. In a run where
+`M1 macrophage` dies out and `M2 macrophage` appears, the key changed between frames — and since a
+`Legend` tells the grid its width, the legend's column changed with it. The stitched verbs settled
+this question on 2026-08-05 (the key describes what the model can contain, from `legend.svg`); the
+still now follows the same rule through `_drawnValues`: by cell type, every configured type gets a
+series, empty if need be — Makie draws a legend entry for an empty scatter without complaint, as the
+movie path already relied on. The movie drew the union of types *seen* across its frames; it now
+draws the configured set too, so a still and a movie of one run agree. Other columns have no config
+list and keep drawing the values present. The legend guard changed from "any cells at all" to "any
+series to key", which is what a `Legend` actually needs.
+
+### Colorbar tick labels moved the axes
+
+Each still has its own colorrange, and Makie reserves exactly the room its tick labels need, so the
+reservation tracked the labels. Measured at the default tick font:
+
+| colorrange | reserved width |
+|---|---:|
+| 0 – 20 | 16 px |
+| 0.2 – 0.65 | 20 px |
+| 0 – 0.08 | 27 px |
+| 7.5×10⁻⁵ – 1.25×10⁻⁴ | 55 px |
+| −1.3×10⁻⁴ – −7.5×10⁻⁵ | 63 px |
+
+Makie has `ticklabelspace` for exactly this, so the layout engine gained `colorbar_ticklabelspace`
+(default `automatic`, forwarded to every `Colorbar`), threaded through both PhysiCell methods. With
+it fixed, frames 19, 67 and 68 of a 7-type, 337-snapshot run solve to byte-identical axis bounding
+boxes; left automatic, the focal axis sat at x = 262, 305 and 286.
+
+The cost is real at small sizes: the legend's `tellwidth` fixes its own column, so the *other*
+columns absorb every reserved pixel — at 700×700 with six colorbars, reserving 70 px shrank the
+satellites from ~115 px to ~47 px. That is why the default stays `automatic` and the dashboard, which
+knows it is rendering a series, chooses the value (60 px). Considered and rejected: horizontal
+colorbars (a label's height is constant, but wide labels along a short bar overlap each other) and
+a compact tick format (`7.5e-05` is no narrower than `7.5×10⁻⁵`). To win the space back, the
+PhysiCell methods no longer label the satellite colorbars: the satellite title already names the
+substrate, so the label restated it at ~25 px of width per column. The focal colorbar (continuous
+`color`) keeps its label, since the focal title is the timestamp, not the column name. The generic
+`tableau(focal, satellites)` is unchanged here — its callers pass `colorbar_labels` themselves.
+
+All of this lives in the extensions; `src/` is untouched. The one change outside the PhysiCell
+extension is the `colorbar_ticklabelspace` passthrough in `MontageCairoMakieExt`, which has to sit
+where the `Colorbar`s are created.
+
+### The legend pinned its column
+
+Seen on a 1000×1000 movie after the above: the legend's column was 139 px wide and the other two
+~320 px, so the two heatmaps sharing the legend's column were a third the size of the rest. A
+vertical `Legend` in a grid cell has `tellwidth = true` by Makie's default, so its column is
+exactly the legend's width and the other columns split everything else. This predates this
+session; dropping the colorbar labels made it more visible, because only the unpinned columns could
+take the freed width. `_placeLegend!` now places grid-cell legends with `tellwidth = tellheight =
+false`: at 1000 px every satellite is 234 px (was 109 and 320); at 700 px with the dashboard's
+60 px reservation, 99 px (was 94 and 129). The trade-off, accepted by the maintainer: a legend wider
+than a third of the figure overflows into the neighbouring cell instead of shrinking the others,
+and a larger `size` cures it.
+
+Version bumped to 0.3.1 so PhysiCellDashboard can require the keyword.

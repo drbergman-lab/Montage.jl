@@ -153,7 +153,11 @@ storyboard(PhysiCellSequence("run01/output"); n_snapshots=5)
     or a vector of indices animates the whole scene through `Makie.record`, with each substrate's
     colorrange fixed to its global min/max so the fields stay comparable frame to frame.
     `substrates` chooses which fields get satellites (all of them by default), `colormap` is the
-    substrate ramp, `markersize` the cell size, and `size` the figure size.
+    substrate ramp, `markersize` the cell size, and `size` the figure size. Each satellite's
+    title names its substrate and its colorbar is unlabelled.
+    `colorbar_ticklabelspace` fixes the width reserved for colorbar tick labels; set it when
+    rendering snapshots as separate stills that must keep one layout — see
+    [Stills that line up](@ref) under Tableau.
 
 ```julia
 using CairoMakie, PhysiCellModelManager, Montage
@@ -201,8 +205,12 @@ tableau(Simulation, 1; cell_types="caf", include_dead=false)
 ## The cell-type legend
 
 !!! tierbrief
-    The stitched verbs include a cell-type key by default (`legend=:auto`), in PhysiCell's own
-    colours. `legend=nothing` suppresses it; `legend_position` places it.
+    Every verb includes a cell-type key by default (`legend=:auto`). With a `legend.svg` in the
+    run it lists every cell type the config defines, in config order and PhysiCell's own colours.
+    Without one, the stitched verbs draw no automatic key, while [`tableau`](@ref) still keys its
+    scatter, from the snapshot's type names in sorted order and Makie's palette. `legend=nothing`
+    suppresses it; for the stitched verbs `legend_position` places it, for `tableau` `legend`
+    itself does.
 
 !!! tierfull
     The entries come from each run's `output/legend.svg`, which lists every cell type the *config*
@@ -213,6 +221,11 @@ tableau(Simulation, 1; cell_types="caf", include_dead=false)
     as flat circles and text, so they stay editable in Illustrator and PowerPoint. `legend_position`
     is independent of the content: `:auto` uses the free cells trailing the last row when the grid
     has any, costing no space, and otherwise a band below.
+
+    [`tableau`](@ref) follows the same rule: its focal scatter gets one series per configured
+    type, empty if that type has no cells in the snapshot, so its legend is the model's legend —
+    the same for a still of any snapshot and for every frame of a movie — rather than a list of
+    the types that happen to be present.
 
 ```julia
 montage(Simulation, [1, 2]; legend=nothing)                    # no key
@@ -235,6 +248,15 @@ montage(Simulation, [1, 2]; legend="key.svg")                  # nest a hand-mad
     snapshots for the types actually present: it is per-frame work, and it produces a legend that
     changes as cells appear and die. The entries are drawn as flat circles and text rather than
     nested as an SVG so they stay editable in Illustrator and PowerPoint.
+
+!!! tierjournal "2026-10-07 — the tableau legend is the model's legend too"
+    A tableau still listed only the types with cells in that snapshot, so a dashboard stepping
+    through a run watched `M1 macrophage` give way to `M2 macrophage` in the key — and the
+    legend's width, which fixes its grid column, moved with it. The still now draws every
+    configured type, as the stitched legend already did for the same reason; the movie path,
+    which drew the union of types seen across its frames, draws the configured set as well, so a
+    still and a movie of one run agree. Columns other than the cell type have no config list, so
+    they keep drawing only the values present.
 
 ## Colouring cells by data
 
