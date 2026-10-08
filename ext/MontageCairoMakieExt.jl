@@ -78,13 +78,20 @@ _pickLegendCell(empty, focal) =
     empty[argmin([abs(r - focal[1]) + abs(c - focal[2]) for (r, c) in empty])]
 
 # Build the focal legend from `fax`'s labeled plots, placed per `legend`.
+#
+# A legend in a grid cell does not tell the grid its width: left to Makie's default it would,
+# and its column would then be exactly as wide as the legend while the other columns split
+# everything else — a 139 px column of panels beside two of 320 px in a 1000 px figure. Floating
+# it keeps the columns equal; a legend wider than its third overflows into the neighbouring cell,
+# which a larger `size` cures.
+const _FLOATING = (tellwidth = false, tellheight = false)
 function _placeLegend!(fig, fax, legend, focal_pos, sat_spots, nrow, ncol)
     (legend === nothing || legend === false) && return
     opaque = (framevisible = true, backgroundcolor = :white)
     if legend isa Tuple                                    # explicit grid cell
         (focal_pos == legend || legend in sat_spots) &&
             @warn "tableau legend cell $legend overlaps the focal/a satellite panel"
-        CairoMakie.Legend(fig[legend[1], legend[2]], fax)
+        CairoMakie.Legend(fig[legend[1], legend[2]], fax; _FLOATING...)
     elseif legend === :auto
         occupied = Set{Tuple{Int,Int}}((focal_pos, sat_spots...))
         empty = [(r, c) for r in 1:nrow for c in 1:ncol if (r, c) ∉ occupied]
@@ -92,7 +99,7 @@ function _placeLegend!(fig, fax, legend, focal_pos, sat_spots, nrow, ncol)
             CairoMakie.axislegend(fax; opaque...)
         else
             r, c = _pickLegendCell(empty, focal_pos)
-            CairoMakie.Legend(fig[r, c], fax)
+            CairoMakie.Legend(fig[r, c], fax; _FLOATING...)
         end
     else                                                   # an axislegend position symbol
         CairoMakie.axislegend(fax; position = legend, opaque...)

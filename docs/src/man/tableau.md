@@ -95,6 +95,12 @@ tableau(cells,
 | `legend` | where the legend goes |
 |---|---|
 | `:auto` (default) | the empty grid cell nearest the focal panel, costing no space; an in-axis corner when the grid is full |
+
+!!! tierfull
+    A legend in a grid cell floats there at its natural size: it does not tell the grid its width,
+    so the columns stay equal. A legend wider than its cell overflows into the neighbouring one
+    rather than squeezing every other panel in its column; a larger `size` gives it room.
+
 | a `Symbol` (`:rt`, `:lb`, …) | that corner, inside the focal axis, on an opaque background |
 | `(row, col)` | that grid cell — warns if it collides with the focal panel or a satellite |
 | `nothing` | no legend |
