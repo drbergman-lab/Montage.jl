@@ -205,9 +205,12 @@ tableau(Simulation, 1; cell_types="caf", include_dead=false)
 ## The cell-type legend
 
 !!! tierbrief
-    Every verb includes a cell-type key by default (`legend=:auto`), in PhysiCell's own colours,
-    listing every cell type the config defines. `legend=nothing` suppresses it; for the stitched
-    verbs `legend_position` places it, for [`tableau`](@ref) `legend` itself does.
+    Every verb includes a cell-type key by default (`legend=:auto`). With a `legend.svg` in the
+    run it lists every cell type the config defines, in config order and PhysiCell's own colours.
+    Without one, the stitched verbs draw no automatic key, while [`tableau`](@ref) still keys its
+    scatter, from the snapshot's type names in sorted order and Makie's palette. `legend=nothing`
+    suppresses it; for the stitched verbs `legend_position` places it, for `tableau` `legend`
+    itself does.
 
 !!! tierfull
     The entries come from each run's `output/legend.svg`, which lists every cell type the *config*

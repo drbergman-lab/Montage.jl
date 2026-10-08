@@ -136,8 +136,10 @@ tableau(ax -> scatter!(ax, positions; color = pressure, colormap = :plasma),
     frames — so it does not need this.
 
 ```julia
-for (k, snap) in enumerate(snapshots)
-    tableau(cells(snap), fields(snap); colorbar_ticklabelspace = 60,
+for (k, (cells, field)) in enumerate(frames)          # one (positions, matrix) pair per frame
+    tableau(ax -> scatter!(ax, cells; label = "cells"),
+            [ax -> heatmap!(ax, xs, ys, field)];
+            satellite_titles = ["field"], colorbar_ticklabelspace = 60,
             output = "frames/frame$k.png")
 end
 ```
