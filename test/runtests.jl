@@ -198,6 +198,44 @@ end
         end
     end
 
+    # `tableau` draws with CairoMakie, but its grid arithmetic is core (see src/tableau.jl), so
+    # the layout the three verbs share is covered here without a heavy test dep.
+    @testset "tableau — ncols/focal_position shape the grid" begin
+        # default: the focal centred in a 3×3, satellites ringed N, S, W, E then corners
+        @test Montage._ringSlots(4) == (3, 3, (2, 2), [(1, 2), (3, 2), (2, 1), (2, 3)])
+        @test Montage._ringSlots(8)[1:3] == (3, 3, (2, 2))
+        @test Montage._ringSlots(9)[1:3] == (4, 4, (2, 2))      # >8 widens to a square
+        # passing neither override routes to that same default
+        @test Montage._ringSlots(4, nothing, nothing) == Montage._ringSlots(4)
+
+        # ncols sets the width; rows follow from focal + satellites; focal takes the middle cell
+        @test Montage._ringSlots(4, 2, nothing) ==
+              (3, 2, (2, 1), [(1, 1), (1, 2), (2, 2), (3, 1)])
+        @test Montage._ringSlots(4, 3, nothing) ==
+              (2, 3, (1, 2), [(1, 1), (1, 3), (2, 1), (2, 2)])
+        @test Montage._ringSlots(3, 1, nothing) == (4, 1, (2, 1), [(1, 1), (3, 1), (4, 1)])
+
+        # focal_position places the focal; satellites still fill the rest in reading order
+        @test Montage._ringSlots(4, 2, (1, 1)) ==
+              (3, 2, (1, 1), [(1, 2), (2, 1), (2, 2), (3, 1)])
+        # a focal past the last row grows the grid to reach it
+        @test Montage._ringSlots(2, 2, (3, 2)) == (3, 2, (3, 2), [(1, 1), (1, 2)])
+        # focal_position alone lays into the width the default would have chosen
+        @test Montage._ringSlots(4, nothing, (1, 1))[1:3] == (2, 3, (1, 1))
+
+        # every explicit grid stays well formed: all satellites placed, in bounds, never on the focal
+        for n in 1:12, nc in 1:5
+            nr, ncl, focal, slots = Montage._ringSlots(n, nc, nothing)
+            @test ncl == nc
+            @test length(slots) == n && allunique(slots) && focal ∉ slots
+            @test all(1 <= r <= nr && 1 <= c <= ncl for (r, c) in slots)
+        end
+
+        @test_throws ErrorException Montage._ringSlots(4, 0, nothing)        # ncols < 1
+        @test_throws ErrorException Montage._ringSlots(4, 2, (1, 5))         # col outside the grid
+        @test_throws ErrorException Montage._ringSlots(4, 2, (1,))           # not a (row, col) pair
+    end
+
     @testset "storyboard — writes by default + guard" begin
         withtmpsvgs(SVG_SQUARE) do paths
             cd(mktempdir()) do

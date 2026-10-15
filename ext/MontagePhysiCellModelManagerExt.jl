@@ -24,7 +24,7 @@ _sequence(id::Integer) = PhysiCellOutput.PhysiCellSequence(_outputFolder(id))
 
 """
     montage(::Type{Simulation}, sim_ids; index=:final, title=(id -> "Sim \$id"),
-            panel_width=300, title_height=34, pad=12,
+            ncols=<auto: ceil(sqrt(n))>, panel_width=300, title_height=34, pad=12,
             output=<auto: montage.svg | montage.mp4>, overwrite=false, framerate=15)
 
 Compose a montage from PhysiCell simulations (PCMM extension). Pass the simulation ids
@@ -44,6 +44,10 @@ The `index` value decides still image vs. movie:
   panel plays that simulation's snapshot sequence in lockstep. Writes a video via
   [`record`](@ref) (needs `using Rsvg, Cairo, FFMPEG`).
 
+`ncols` sets the grid width — the default keeps the near-square `ceil(sqrt(n))` shape. Give it
+when the comparison has a shape of its own: list the ids row-major and pass the number of
+conditions (or of replicates) to get one per row. It applies to stills and movies alike.
+
 `output` defaults to `dataDir()/outputs/montage.svg` (still) or `…/montage.mp4` (movie); it
 errors if the file exists unless `overwrite=true`. `output=nothing` returns the in-memory
 result (SVG string, or a [`MontageSpec`](@ref) for a movie). `framerate` applies to movies.
@@ -55,6 +59,7 @@ using PhysiCellModelManager, Montage
 montage(Simulation, simulationIDs())                        # final-state grid of every sim
 montage(Simulation, [1, 2, 3]; index=:initial)              # initial states of sims 1–3
 montage(Simulation, [1, 2, 3]; index=10, output=nothing)    # 10th snapshot, as an SVG string
+montage(Simulation, [1, 2, 3, 4, 5, 6]; ncols=3)            # 2 rows of 3, in the order given
 
 using Rsvg, Cairo, FFMPEG                                   # movie extension
 montage(Simulation, [1, 2, 22, 32]; index=:all, output="compare.mp4", framerate=15)

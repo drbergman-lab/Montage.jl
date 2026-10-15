@@ -875,3 +875,60 @@ than a third of the figure overflows into the neighbouring cell instead of shrin
 and a larger `size` cures it.
 
 Version bumped to 0.3.1 so PhysiCellDashboard can require the keyword.
+
+---
+
+## Session: One layout control across all three verbs (2026-10-15)
+
+### Goal
+Make every composition verb expose a way to set its grid, with the column count as the floor.
+
+### What was already there
+`montage` has taken `ncols` since 2026-09-21 and `storyboard` since it was built — a report that
+`montage` lacked it was simply out of date. Checked end to end before changing anything: `ncols`
+shapes the still, rides along in `MontageSpec`, and stitches every movie frame, and because the
+PhysiCell and PCMM methods forward `kwargs...` it reaches those front doors too. The gap was
+`tableau`, whose grid was whatever `_ringSlots` decided from the satellite count and nothing else.
+
+### Design
+`ncols` on `tableau` means what it means on the other two: the grid is that many columns wide,
+with just enough rows for the focal panel plus its satellites. The focal takes the middle cell;
+satellites fill the remaining cells in reading order.
+
+`focal_position = (row, col)` came with it rather than after it. `ncols` alone is
+under-determined — a 2×2 grid has no middle cell, so the default lands the focal somewhere
+defensible but arbitrary, and with no way to say otherwise `ncols` would be half a control. A row
+past the last one grows the grid to reach it; a column outside the grid is an error, since there
+is no sensible way to honour it.
+
+Reading-order fill rather than extending the ring. The ring's cells are named relative to a centred
+focal (north, south, west, east, then corners) and stop meaning anything once the caller owns the
+grid — "satellite 3 is in the 3rd free cell" survives a change of `ncols`, "satellite 3 is west"
+does not. Left unset, both kwargs route to the existing `_ringSlots(n)` untouched, so every current
+figure renders identically; `_ringSlots(n, nothing, nothing) == _ringSlots(n)` is a test.
+
+### `_ringSlots` moved to the core
+It is integer grid arithmetic with no Makie in it — the same kind the core already owns for
+`_svgGrid` — and the core test suite deliberately has no CairoMakie. Leaving it in
+`MontageCairoMakieExt` would have meant the one place that decides a tableau's grid was the one
+place `Pkg.test()` could not reach. It now lives in `src/tableau.jl`; the extension imports it and
+only draws into the cells it is handed. That also matches how the core already owns `_resolvedNcols`
+for `montage`.
+
+### Verification
+Core suite green (335 tests), including a sweep asserting that for every `n` in 1:12 and `ncols` in
+1:5 the grid is well formed — all satellites placed, in bounds, none on the focal cell. Rendered
+stills through the generic `tableau` at `ncols` 2 and 4 and with `focal_position = (1, 1)`, and
+through the PhysiCell path on simulation 1 of the dev project (3 substrates) at `ncols` 1 and 2.
+Docs build clean.
+
+### Open
+Nothing blocking. Worth noting for anyone setting `ncols`: the default figure `size` is square, so
+a grid that is not wants a matching `size` — `(1000, 1000)` letterboxes a 4×2 tableau. The verb
+does not guess a size, since the right one depends on the panels' own aspect.
+
+Version bumped to 0.3.2 — a patch, per the Julia convention where the minor slot carries the
+breaking changes for a 0.x package. Everything here is additive: the new kwargs default to the
+old layout (there is a test asserting `_ringSlots(n, nothing, nothing) == _ringSlots(n)`), and
+`_ringSlots` moved between two unexported internals, so no public surface changed. Matches how
+0.3.1 shipped `colorbar_ticklabelspace`.

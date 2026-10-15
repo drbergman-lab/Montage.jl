@@ -187,7 +187,7 @@ end
 # A still tableau from a *loaded* snapshot (cells/substrates/mesh present).
 function _tableauStill(snap; substrates, colormap, markersize, legend, size, output, overwrite,
                        color, color_mode, cell_colormap, cell_types, include_dead,
-                       colorbar_ticklabelspace)
+                       colorbar_ticklabelspace, ncols, focal_position)
     cells, subs = snap.cells, snap.substrates
     names = _substrateNames(subs, substrates)
     xlims, ylims = extrema(snap.mesh["x"]), extrema(snap.mesh["y"])
@@ -231,6 +231,7 @@ function _tableauStill(snap; substrates, colormap, markersize, legend, size, out
                            focal_title = "cells (t = $(snap.time))",
                            satellite_titles = names,
                            focal_colorbar_label = focal_colorbar_label,
+                           ncols = ncols, focal_position = focal_position,
                            xlims = xlims, ylims = ylims, size = size,
                            legend = nseries > 0 ? legend : nothing,
                            colorbar_ticklabelspace = colorbar_ticklabelspace,
@@ -247,9 +248,9 @@ _loaded(snap::PhysiCellSnapshot) =
 """
     tableau(snap::PhysiCellSnapshot; substrates=<all>, colormap=:viridis, markersize=6,
             color=:cell_type_name, color_mode=:auto, cell_colormap=:viridis,
-            cell_types=nothing, include_dead=true, legend=:auto,
-            colorbar_ticklabelspace=automatic, size=(1000, 1000), output="tableau.png",
-            overwrite=false)
+            cell_types=nothing, include_dead=true, legend=:auto, ncols=nothing,
+            focal_position=nothing, colorbar_ticklabelspace=automatic, size=(1000, 1000),
+            output="tableau.png", overwrite=false)
 
 Still tableau of one PhysiCell state: the cells scattered, centered, with a substrate heatmap +
 colorbar per substrate around them. Reads the snapshot's data (reloading if the snapshot was
@@ -262,6 +263,10 @@ scatter with `cell_colormap` plus a colorbar. `color_mode` (`:auto`, `:categoric
 `cell_types` and `include_dead` restrict which cells are drawn. See `cellLabels(snap)` for the
 available columns.
 
+`ncols` and `focal_position` set the grid — the same layout control `montage` and `storyboard`
+take — in place of the default ring of satellites around a centered focal; see the generic
+`tableau(focal, satellites)` for what they mean, and give a non-square grid a matching `size`.
+
 With the default `color`, the legend lists **every cell type the config defines**, in config order,
 whether or not the type has cells in this snapshot — so stills of different snapshots of one run
 carry one and the same legend. `colorbar_ticklabelspace` fixes the width reserved for the colorbar
@@ -272,14 +277,16 @@ function Montage.tableau(snap::PhysiCellSnapshot;
                          substrates = nothing, colormap = :viridis, markersize::Real = 6,
                          color = :cell_type_name, color_mode::Symbol = :auto,
                          cell_colormap = :viridis, cell_types = nothing, include_dead::Bool = true,
-                         legend = :auto, colorbar_ticklabelspace = CairoMakie.Makie.automatic,
+                         legend = :auto, ncols::Union{Nothing,Integer} = nothing,
+                         focal_position = nothing,
+                         colorbar_ticklabelspace = CairoMakie.Makie.automatic,
                          size = (1000, 1000),
                          output::Union{Nothing,AbstractString} = "tableau.png", overwrite::Bool = false)
     s = _loaded(snap)
     s === missing && error("could not read snapshot $(repr(snap.index)) in $(snap.folder)")
     return _tableauStill(s; substrates, colormap, markersize, legend, size, output, overwrite,
                          color, color_mode, cell_colormap, cell_types, include_dead,
-                         colorbar_ticklabelspace)
+                         colorbar_ticklabelspace, ncols, focal_position)
 end
 
 _resolveFrames(seq::PhysiCellSequence, index) = index === :all ? [s.index for s in seq.snapshots] : collect(index)
@@ -287,14 +294,17 @@ _resolveFrames(seq::PhysiCellSequence, index) = index === :all ? [s.index for s 
 """
     tableau(seq::PhysiCellSequence; index=:final, substrates=<all>, colormap=:viridis,
             markersize=6, color=:cell_type_name, color_mode=:auto, cell_colormap=:viridis,
-            cell_types=nothing, include_dead=true, legend=:auto,
-            colorbar_ticklabelspace=automatic, size=(1000, 1000), framerate=15,
-            output=<tableau.png | tableau.mp4>, overwrite=false)
+            cell_types=nothing, include_dead=true, legend=:auto, ncols=nothing,
+            focal_position=nothing, colorbar_ticklabelspace=automatic, size=(1000, 1000),
+            framerate=15, output=<tableau.png | tableau.mp4>, overwrite=false)
 
 Tableau of a PhysiCell output folder. `index` decides still vs. movie, as in `montage`:
 `:final`/`:initial`/`Integer` → a still of that state; `:all` or a vector/range of snapshot
 indices → a movie of the scene over those snapshots (fixed colorscale per substrate, stable
 legend). Writes `tableau.png`/`tableau.mp4` by default.
+
+`ncols` and `focal_position` set the grid instead of the default ring (see the generic
+`tableau(focal, satellites)`); in a movie the layout is resolved once, so every frame shares it.
 
 `color`, `color_mode`, `cell_colormap`, `cell_types` and `include_dead` control the cell layer —
 see `tableau(::PhysiCellSnapshot)`. In a movie a continuous `color` gets a **globally fixed**
@@ -305,7 +315,9 @@ function Montage.tableau(seq::PhysiCellSequence;
                          index = :final, substrates = nothing, colormap = :viridis,
                          markersize::Real = 6, color = :cell_type_name, color_mode::Symbol = :auto,
                          cell_colormap = :viridis, cell_types = nothing, include_dead::Bool = true,
-                         legend = :auto, colorbar_ticklabelspace = CairoMakie.Makie.automatic,
+                         legend = :auto, ncols::Union{Nothing,Integer} = nothing,
+                         focal_position = nothing,
+                         colorbar_ticklabelspace = CairoMakie.Makie.automatic,
                          size = (1000, 1000), framerate::Integer = 15,
                          output::Union{Nothing,AbstractString} = _isMovieIndex(index) ? "tableau.mp4" : "tableau.png",
                          overwrite::Bool = false)
@@ -313,19 +325,19 @@ function Montage.tableau(seq::PhysiCellSequence;
         return _tableauMovie(seq.folder, _resolveFrames(seq, index);
                              substrates, colormap, markersize, legend, size, framerate, output,
                              overwrite, color, color_mode, cell_colormap, cell_types, include_dead,
-                             colorbar_ticklabelspace)
+                             colorbar_ticklabelspace, ncols, focal_position)
     end
     snap = PhysiCellSnapshot(seq.folder, index; include_cells = true, include_substrates = true, include_mesh = true)
     snap === missing && error("no snapshot at index $(repr(index)) in $(seq.folder)")
     return _tableauStill(snap; substrates, colormap, markersize, legend, size, output, overwrite,
                          color, color_mode, cell_colormap, cell_types, include_dead,
-                         colorbar_ticklabelspace)
+                         colorbar_ticklabelspace, ncols, focal_position)
 end
 
 # Animate the tableau over `frames` (snapshot indices) via `Makie.record`.
 function _tableauMovie(folder, frames; substrates, colormap, markersize, legend, size, framerate,
                        output, overwrite, color, color_mode, cell_colormap, cell_types, include_dead,
-                       colorbar_ticklabelspace)
+                       colorbar_ticklabelspace, ncols, focal_position)
     isempty(frames) && error("no frames to animate")
     output === nothing && error("a tableau movie must be written to a file — pass output=\"…mp4\"")
     Montage._assertWritable(output, overwrite)
@@ -417,6 +429,7 @@ function _tableauMovie(folder, frames; substrates, colormap, markersize, legend,
     fig = Montage.tableau(focal, satellites; focal_title = titleobs,
                           satellite_titles = names,            # colorbars unlabelled, as in a still
                           focal_colorbar_label = focal_colorbar_label,
+                          ncols = ncols, focal_position = focal_position,
                           xlims = xlims, ylims = ylims, size = size,
                           legend = (categorical && !isempty(all_vals)) ? legend : nothing,
                           colorbar_ticklabelspace = colorbar_ticklabelspace,

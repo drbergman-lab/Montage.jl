@@ -21,7 +21,8 @@ _isMovieIndex(index) = index === :all || index isa AbstractVector
 
 """
     tableau(::Type{Simulation}, sim_id; index=:final, substrates=<all>, colormap=:viridis,
-            markersize=6, legend=:auto, size=(1000, 1000), framerate=15,
+            markersize=6, legend=:auto, ncols=nothing, focal_position=nothing,
+            size=(1000, 1000), framerate=15,
             output=<dataDir()/outputs/tableau.png|.mp4>, overwrite=false)
 
 Compose one PhysiCell simulation state (CairoMakie + PhysiCellModelManager extension): the
@@ -33,6 +34,11 @@ The `index` value decides still image vs. movie, the same way as `montage`:
 - `:all` or a vector/range of snapshot indices → a **movie**: the whole scene animated over
   those snapshots via `Makie.record`, with a stable colorscale (each substrate's colorrange is
   fixed to its global min/max across frames) and a stable cell-type legend.
+
+`ncols` and `focal_position` set the grid — `ncols` columns with the focal in the middle cell
+and the satellites filling the rest in reading order, or a focal cell you name — in place of the
+default ring around a centered focal. This is the same layout control `montage` and `storyboard`
+take; a non-square grid wants a matching `size`.
 
 Other kwargs: `substrates` (which get satellites, default all), `colormap`, `markersize`,
 `size`, and `framerate` (movies). `output` writes by default — `tableau.png` for a still
@@ -54,6 +60,7 @@ folder and delegates.
 using CairoMakie, PhysiCellModelManager, Montage
 tableau(Simulation, 1)                                        # still: cells + every substrate
 tableau(Simulation, 1; index=60, substrates=["oxygen"], legend=:rt, output="ox.png")
+tableau(Simulation, 1; ncols=2, size=(700, 1000))             # 2-wide grid instead of the ring
 tableau(Simulation, 1; index=:all, output="tableau.mp4", framerate=15)   # movie over all snapshots
 tableau(Simulation, 1; index=0:5:120)                         # movie over a subset
 ```

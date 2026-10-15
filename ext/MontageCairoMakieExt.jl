@@ -1,42 +1,34 @@
 # CairoMakie backend for Montage — the generic `tableau` layout engine.
 #
-# Loaded when CairoMakie is present. Implements the core-declared `Montage._tableauFigure`:
-# arrange a focal panel in the center with satellite panels ringed around it, each satellite
-# paired with a colorbar, all sharing a spatial extent. Data-agnostic — it takes axis
-# callbacks (`ax -> …`); the PhysiCell data → callbacks step lives in MontageCairoMakiePCMMExt.
+# Loaded when CairoMakie is present. Implements `Montage.tableau(focal, satellites)`: arrange a
+# focal panel with satellite panels around it, each satellite paired with a colorbar, all sharing
+# a spatial extent. Data-agnostic — it takes axis callbacks (`ax -> …`); the PhysiCell data →
+# callbacks step lives in MontageCairoMakiePhysiCellOutputExt. *Which* cell each panel lands in is
+# `Montage._ringSlots`, in the core — this module only draws into the cells it hands back.
 
 module MontageCairoMakieExt
 
 using Montage
 using CairoMakie
 
-# Grid placement for a focal panel plus `n` satellites: focal centered, satellites ringed
-# around it. Returns (nrows, ncols, focal_pos, satellite_positions).
-function _ringSlots(n::Integer)
-    if n <= 8
-        ring = [(1, 2), (3, 2), (2, 1), (2, 3), (1, 1), (1, 3), (3, 1), (3, 3)]  # N,S,W,E, corners
-        return 3, 3, (2, 2), ring[1:n]
-    end
-    g = ceil(Int, sqrt(n + 1))
-    focal = ((g + 1) ÷ 2, (g + 1) ÷ 2)
-    slots = [(r, c) for r in 1:g for c in 1:g if (r, c) != focal][1:n]
-    return g, g, focal, slots
-end
+using Montage: _ringSlots
 
 # Internal: build the tableau `Figure` (layout only, no output). `focal` draws into the
 # centered axis; each `satellites[i]` draws into a ringed axis and returns the plot its
 # colorbar reads. All axes share `xlims`/`ylims`. `legend` is handled by `_placeLegend!`.
 # `colorbar_ticklabelspace` is forwarded to every `Colorbar` as its `ticklabelspace`.
+# `ncols`/`focal_position` override the auto ring — see `_ringSlots`.
 function _tableauFigure(focal, satellites;
                         focal_title="",                     # String or an Observable (animated)
                         satellite_titles::AbstractVector=String[],
                         colorbar_labels::AbstractVector=String[],
                         focal_colorbar_label=nothing,
+                        ncols=nothing, focal_position=nothing,
                         xlims=nothing, ylims=nothing, size=(1000, 1000),
                         legend=:auto, colorbar_ticklabelspace=CairoMakie.Makie.automatic)
     fig = CairoMakie.Figure(; size = size)
     n = length(satellites)
-    nrow, ncol, fpos, spots = _ringSlots(n)
+    nrow, ncol, fpos, spots = _ringSlots(n, ncols, focal_position)
 
     share!(ax) = (xlims !== nothing && ylims !== nothing) &&
         CairoMakie.limits!(ax, xlims[1], xlims[2], ylims[1], ylims[2])
@@ -109,7 +101,8 @@ end
 
 """
     tableau(focal, satellites; focal_title="", satellite_titles=[], colorbar_labels=[],
-            focal_colorbar_label=nothing, xlims=nothing, ylims=nothing, legend=:auto,
+            focal_colorbar_label=nothing, ncols=nothing, focal_position=nothing,
+            xlims=nothing, ylims=nothing, legend=:auto,
             colorbar_ticklabelspace=automatic, size=(1000, 1000), output="tableau.png",
             overwrite=false)
 
@@ -128,6 +121,15 @@ encodes a continuous value rather than discrete categories. `focal` must then re
 the same convention the satellites already follow. Such a plot has no labeled series, so pass
 `legend=nothing` alongside it.
 
+`ncols` and `focal_position` set the grid, the same layout control `montage` and `storyboard`
+take. By default the focal sits at the center of a 3×3 with the satellites ringed around it
+(N, S, W, E, then the corners), widening to the smallest square that fits once there are more
+than eight. Give `ncols` and the grid is that many columns wide, with just enough rows for the
+focal plus its satellites, the focal in the middle cell and the satellites filling the rest in
+reading order; `focal_position=(row, col)` puts the focal in a cell you pick, growing the grid
+if that row is past the last one. A non-square grid wants a matching `size` — `(1000, 1000)`
+stretches a 4×2 tableau.
+
 `colorbar_ticklabelspace` is every colorbar's `ticklabelspace` (Makie's `automatic` by default:
 just wide enough for its tick labels). Give it a fixed width in pixels when drawing a **series of
 stills** that must line up — a dashboard frame, a figure panel per timepoint. Each frame's
@@ -139,6 +141,9 @@ ticks read `0.08`, and left automatic that difference pushes every axis in the g
 using CairoMakie, Montage
 tableau(ax -> scatter!(ax, xs, ys),
         [ax -> heatmap!(ax, X, Y, Z)]; satellite_titles=["field"], output="scene.png")
+
+# A 2-column strip: focal top-left, the three satellites filling the rest
+tableau(focal, satellites; ncols=2, focal_position=(1, 1), size=(700, 1000))
 ```
 """
 function Montage.tableau(focal::Function, satellites::AbstractVector;
@@ -146,11 +151,13 @@ function Montage.tableau(focal::Function, satellites::AbstractVector;
                          satellite_titles::AbstractVector=String[],
                          colorbar_labels::AbstractVector=String[],
                          focal_colorbar_label=nothing,
+                         ncols::Union{Nothing,Integer}=nothing, focal_position=nothing,
                          xlims=nothing, ylims=nothing, legend=:auto,
                          colorbar_ticklabelspace=CairoMakie.Makie.automatic, size=(1000, 1000),
                          output::Union{Nothing,AbstractString}="tableau.png", overwrite::Bool=false)
     fig = _tableauFigure(focal, satellites; focal_title, satellite_titles,
-                         colorbar_labels, focal_colorbar_label, xlims, ylims, size, legend,
+                         colorbar_labels, focal_colorbar_label, ncols, focal_position,
+                         xlims, ylims, size, legend,
                          colorbar_ticklabelspace)
     output === nothing && return fig
     Montage._assertWritable(output, overwrite)
