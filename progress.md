@@ -926,3 +926,9 @@ Docs build clean.
 Nothing blocking. Worth noting for anyone setting `ncols`: the default figure `size` is square, so
 a grid that is not wants a matching `size` — `(1000, 1000)` letterboxes a 4×2 tableau. The verb
 does not guess a size, since the right one depends on the panels' own aspect.
+
+Version bumped to 0.3.2 — a patch, per the Julia convention where the minor slot carries the
+breaking changes for a 0.x package. Everything here is additive: the new kwargs default to the
+old layout (there is a test asserting `_ringSlots(n, nothing, nothing) == _ringSlots(n)`), and
+`_ringSlots` moved between two unexported internals, so no public surface changed. Matches how
+0.3.1 shipped `colorbar_ticklabelspace`.
