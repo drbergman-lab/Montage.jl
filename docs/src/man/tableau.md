@@ -82,7 +82,8 @@ tableau(cells,
 !!! tierbrief
     Satellites ring the centred focal panel in a fixed order: north, south, west, east, then
     the four corners. Past eight satellites the ring gives way to a square grid with the focal
-    panel in the middle of it.
+    panel in the middle of it. `ncols` and `focal_position` override that — see
+    [Setting the grid](@ref).
 
 !!! tierfull
     Satellite axes have their decorations hidden. They share the focal panel's extent, so their
@@ -104,6 +105,56 @@ tableau(cells,
 | a `Symbol` (`:rt`, `:lb`, …) | that corner, inside the focal axis, on an opaque background |
 | `(row, col)` | that grid cell — warns if it collides with the focal panel or a satellite |
 | `nothing` | no legend |
+
+## Setting the grid
+
+!!! tierbrief
+    `ncols` makes the grid that many columns wide; `focal_position = (row, col)` puts the focal
+    panel in a cell you pick. Either one replaces the automatic ring with a plain reading-order
+    fill. The same `ncols` that shapes a [`montage`](@ref) or a [`storyboard`](@ref).
+
+!!! tierfull
+    With `ncols` given, the grid is that many columns wide and gets just enough rows for the
+    focal panel plus its satellites. The focal panel takes the middle cell of that grid unless
+    `focal_position` names another, and the satellites fill the remaining cells in reading
+    order — so satellite `i` is in the `i`-th free cell, counting left to right and top to
+    bottom. A `focal_position` whose row falls past the last one grows the grid to reach it.
+
+    Reading order rather than the ring, because the ring's cells are named relative to a
+    centred focal panel (north, south, west, east) and stop meaning anything once the grid is
+    yours. "The third satellite is in the third free cell" survives a change of `ncols`;
+    "the third satellite is west" does not.
+
+    The default figure `size` is square, so a grid that is not wants one to match —
+    `(1000, 1000)` stretches each panel of a four-wide, two-high tableau into a letterbox. The
+    legend still lands in a free cell when the grid leaves one, which a grid sized exactly to
+    its panels does not: `ncols = 2` with three satellites fills all four cells, and the legend
+    falls back to a corner of the focal axis.
+
+```julia
+# a two-wide strip: focal top-left, the three satellites filling the rest
+tableau(cells, [oxygen_plot, drug_plot, ecm_plot];
+        ncols = 2, focal_position = (1, 1), size = (700, 1000))
+
+# one column, focal in the middle, a satellite above and below
+tableau(cells, [oxygen_plot, drug_plot]; ncols = 1, size = (450, 1300))
+```
+
+!!! tierjournal "2026-10-15 — the same layout control on all three verbs"
+    `montage` and `storyboard` both took `ncols`; `tableau` took nothing, and its grid was
+    whatever `_ringSlots` decided. That is a gap in the API rather than a property of the verb —
+    a tableau is still a grid, and a two-column one is a reasonable thing to want for a portrait
+    figure or a dashboard tile. So `ncols` now means the same thing on all three.
+
+    `focal_position` came with it because `ncols` alone is under-determined: in a 2×2 there is no
+    middle cell, so the default lands the focal panel somewhere defensible but arbitrary, and
+    without a way to say otherwise `ncols` would be half a control.
+
+    The arithmetic moved to the core (`src/tableau.jl`) in the process. It is integer grid math
+    with no Makie in it, the same kind the core already owns for `_svgGrid`, and the core test
+    suite has no CairoMakie — leaving it in the extension would have meant the one place that
+    decides a tableau's grid was the one place `Pkg.test()` could not reach. The extension now
+    only draws into the cells it is handed.
 
 ## A colorbar on the focal panel
 

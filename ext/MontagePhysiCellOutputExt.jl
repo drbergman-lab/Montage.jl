@@ -366,8 +366,9 @@ by dropping the non-matching cell groups from each snapshot SVG — no re-render
 "N agents" label is corrected to the number actually shown. A `legend=:auto` legend narrows to the
 kept types; an explicit `legend` — your own entries, or a file — is used exactly as given.
 
-All other keywords pass through to the core verb (`output`, `overwrite`, `panel_width`,
-`framerate`, …).
+All other keywords pass through to the core verb — including `ncols`, which sets the grid width
+in place of the near-square default, plus `output`, `overwrite`, `panel_width`, `framerate`, and
+the rest. See [`montage`](@ref).
 """
 function Montage.montage(seqs::AbstractVector{<:PhysiCellSequence};
                          index = :final, title = seq -> _folderLabel(seq.folder),
