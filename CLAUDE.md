@@ -113,7 +113,7 @@ A feature is complete when **all** are true:
 
 ## Environment Facts
 - Julia 1.13.0 in the dev env (extensions need ≥1.9). Template `[compat] julia = "1.10.10"`.
-- PCMM UUID `7582d1aa-5e58-4d65-a123-4418a61a2644`; `[compat] PhysiCellModelManager = "0.4, 0.5"` (0.5.1 is current). PCMM ≥ 0.4 depends on PhysiCellOutput, so `using PhysiCellModelManager, Montage` activates both PhysiCell extensions on its own — do not tell users to load PhysiCellOutput as well.
+- PCMM UUID `7582d1aa-5e58-4d65-a123-4418a61a2644`; `[compat] PhysiCellModelManager = "0.4, 0.5, 0.6"` (0.6.0 is current). PCMM ≥ 0.4 depends on PhysiCellOutput, so `using PhysiCellModelManager, Montage` activates both PhysiCell extensions on its own — do not tell users to load PhysiCellOutput as well.
 - Dev project with real data: `/Users/dbergman1/Research/GeorgetownR01` (a Julia project, **not** git) — 34+ sims, each with `final.svg` and 124 snapshots. Real data for every mode.
 - PhysiCell `final.svg` intrinsic size is 1000×1070 — **parse it, do not hardcode**.
 - Renderers available on the machine: `rsvg-convert`, `qlmanage`, `sips`.
