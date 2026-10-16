@@ -49,7 +49,7 @@ Montage's core has no dependencies at all — its `Project.toml` carries no `[de
     satisfies the `["PhysiCellModelManager", "PhysiCellOutput"]` trigger without you typing the
     second name. The trigger list names both because the extension's code uses both: it calls
     PCMM to resolve an id to a folder, then constructs a `PhysiCellOutput.PhysiCellSequence`
-    over it. Montage's compat bound is `PhysiCellModelManager = "0.4, 0.5"`, so this holds for
+    over it. Montage's compat bound is `PhysiCellModelManager = "0.4, 0.5, 0.6"`, so this holds for
     every version Montage supports.
 
     CairoMakie is orthogonal to all of that. On its own it adds the generic `tableau`; combined
